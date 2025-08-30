@@ -30,9 +30,9 @@ def browser_setup(request):
     )
     page = context.new_page()
 
-    # ✅ Login with CSV creds
+    # login steps...
     email, password, country = load_CSV_data()
-    page.goto("https://accounts.trademo.com/",wait_until="load")
+    page.goto("https://accounts.trademo.com/", wait_until="load")
     page.get_by_placeholder("Enter registered email address").fill(email)
     page.get_by_placeholder("Enter your password").fill(password)
     page.get_by_role("button", name="Sign In on Trademo").click()
@@ -44,13 +44,11 @@ def browser_setup(request):
         page.get_by_role("button", name="Confirm and Sign In").click()
         expect(page.locator("text=Shipments")).to_be_visible(timeout=100000)
 
-    # ✅ attach to request.cls so tests can use self.page
     request.cls.page = page
     request.cls.context = context
 
-    yield page  # let tests use the page
+    yield page
 
-    # cleanup & video attachment
     video_path = page.video.path() if page.video else None
     page.close()
     context.close()
@@ -58,7 +56,13 @@ def browser_setup(request):
     playwright.stop()
 
     if video_path and os.path.exists(video_path):
-        allure.attach.file(video_path, name="Test Video", attachment_type=allure.attachment_type.MP4)
+        if hasattr(request.node, "rep_call") and request.node.rep_call.failed:
+            allure.attach.file(video_path, name="Test Video",
+                               attachment_type=allure.attachment_type.MP4)
+        else:
+            os.remove(video_path)
+
+
 
 
 # ---------- COUNTRY SELECTION FIXTURE ----------
