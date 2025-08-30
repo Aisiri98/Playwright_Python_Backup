@@ -7,9 +7,20 @@ from playwright.sync_api import Page, expect
 from playwright.sync_api import expect, TimeoutError as PlaywrightTimeoutError
 invalid_entries =[]
 
+
+def split_location(text: str):
+    # Remove commas and extra spaces
+    clean_text = text.replace(",", " ").strip()
+
+    # Split into words
+    parts = clean_text.split()
+
+    return parts
 class Search:
     def __init__(self, page: Page):
+        self.port_name_hyperlink = None
         self.page = page
+        self.invalid_consignee_entries = []
 
     def auto_suggest_hs_code_search(self, hs_code: str):
         """Test HS Code search functionality"""
@@ -60,108 +71,128 @@ class Search:
 
         self.page.locator(".tw-bg-primary-purple-500").click()
 
-    def check_hs_code_in_shipmentgrid(self, file_name: str, validate: bool = True):
+    def check_hs_code_in_shipmentgrid(self, validate: bool = True, use_pagination: bool = False):
         self.page.locator("//a[@id='nav-home-tab']").click()
-        self.page.wait_for_timeout(3000)
 
-        # Initialize invalid_entries on first call only
         if not hasattr(self, "invalid_entries"):
             self.invalid_entries = []
 
-        # --- Find column indexes dynamically ---
         headers = self.page.locator("table thead tr th")
         header_count = headers.count()
 
-        self.hs_code_idx = None
-        self.s_no_idx = None
-        self.m_field_idx = None
+        self.S_No = None
+        self.HS_Code_field = None
+        self.Matching_Field = None
 
+        # --- Extract headers dynamically ---
+        table_headers = []
         for i in range(header_count):
-            header_text = headers.nth(i).inner_text().strip().lower()
-            if header_text == "hs code":
-                self.hs_code_idx = i
-            elif header_text in ["s no", "sl no"]:
-                self.s_no_idx = i
-            elif header_text == "matching fields":
-                self.m_field_idx = i
+            header_text = headers.nth(i).inner_text().strip()
+            table_headers.append(header_text)
 
-        # Validate we found all indexes
-        if self.hs_code_idx is None:
-            raise Exception("❌ HS Code column not found in the table headers")
-        if self.s_no_idx is None:
-            raise Exception("❌ S No column not found in the table headers")
-        if self.m_field_idx is None:
-            raise Exception("❌ Matching field column not found in the table headers")
+            if header_text.lower() in ["s no", "sl no", "serial no"]:
+                self.S_No = i
+            elif header_text.lower() == "hs code":
+                self.HS_Code_field = i
+            elif header_text.lower() in ["matching fields", "matching field"]:
+                self.Matching_Field = i
 
-        print(f"✅ Found 'HS Code' at index {self.hs_code_idx}")
-        print(f"✅ Found 'S No' at index {self.s_no_idx}")
-        print(f"✅ Found 'Matching Fields' at index {self.m_field_idx}")
+        if self.S_No is None:
+            raise Exception("❌ 'S No' column not found in table headers")
+        if self.HS_Code_field is None:
+            raise Exception("❌ 'HS Code' column not found in table headers")
+        if self.Matching_Field is None:
+            raise Exception("❌ 'Matching Field' column not found in table headers")
 
-        # --- Validate rows ---
-        rows = self.page.locator("table tbody tr")
-        row_count = rows.count()
+        print(
+            f"✅ Found column indexes → S No: {self.S_No}, HS Code: {self.HS_Code_field}, Matching Field: {self.Matching_Field}")
 
-        if validate:
+        all_rows_data = []
+
+        # --- function to process a page ---
+        def process_current_page():
+            rows = self.page.locator("table tbody tr")
+            row_count = rows.count()
+
             for i in range(row_count):
-                sl_no = rows.nth(i).locator("td").nth(self.s_no_idx).inner_text().strip()
-                hs_code = rows.nth(i).locator("td").nth(self.hs_code_idx).inner_text().strip()
-                matching_field = rows.nth(i).locator("td").nth(self.m_field_idx).inner_text().strip()
+                row_data = []
+                cells = rows.nth(i).locator("td")
+                cell_count = cells.count()
 
-                # ✅ Validate HS Code
-                if hs_code.startswith(self.selected_hs_code):
-                    print(f"✅ Valid HS Code: {hs_code} at Sl. No: {sl_no}")
+                for j in range(cell_count):
+                    row_data.append(cells.nth(j).inner_text().strip())
+
+                validation_note = ""  # extra Excel column
+
+                if validate:
+                    sl_no = row_data[self.S_No]
+                    hs_code = row_data[self.HS_Code_field]
+                    matching_field = row_data[self.Matching_Field]
+
+                    # ✅ Validate HS Code
+                    if hs_code.startswith(self.selected_hs_code):
+                        print(f"✅ PASS: HS Code '{hs_code}' at Sl. No: {sl_no}")
+                    else:
+                        print(
+                            f"❌ FAIL: Invalid HS Code '{hs_code}' at Sl. No: {sl_no} (Expected prefix: {self.selected_hs_code})")
+                        self.invalid_entries.append({"slNo": sl_no, "HS Code": hs_code, "Matching": matching_field})
+                        validation_note = "❌ Invalid HS Code"
+
+                    # ✅ Validate Matching Field
+                    if matching_field.lower() == "hs code":
+                        print(f"✅ PASS: Matching field '{matching_field}' at Sl. No: {sl_no}")
+                    else:
+                        print(f"❌ FAIL: Invalid Matching field '{matching_field}' at Sl. No: {sl_no}")
+                        self.invalid_entries.append({"slNo": sl_no, "HS Code": hs_code, "Matching": matching_field})
+                        validation_note = (
+                                              validation_note + " | " if validation_note else "") + "❌ Invalid Matching Field"
+
+                row_data.append(validation_note)
+                all_rows_data.append(row_data)
+
+        # --- Pagination ---
+        if use_pagination:
+            while True:
+                process_current_page()
+                next_button = self.page.locator('[class="trademo-table-arrow-button"]').nth(1)
+                if next_button.is_enabled():
+                    next_button.click()
+                    self.page.locator("table tbody tr td:nth-child(1)").first.wait_for(
+                        state="visible", timeout=100000
+                    )
                 else:
-                    print(f"❌ Invalid HS Code: {hs_code} at Sl. No: {sl_no}")
-                    self.invalid_entries.append({
-                        "sl_no": sl_no, "hs_code": hs_code, "matching_field": matching_field
-                    })
+                    break
+        else:
+            process_current_page()
 
-                # ✅ Validate Matching Field
-                if matching_field.lower() == "hs code":
-                    print(f"✅ Valid Matching field {matching_field}at Sl. No: {sl_no}")
-                else:
-                    print(f"❌ Invalid Matching field: {matching_field} at Sl. No: {sl_no}")
-                    self.invalid_entries.append({
-                        "sl_no": sl_no, "hs_code": hs_code, "matching_field": matching_field
-                    })
-
-        # Check if "Next" button exists and is enabled
-        # next_button = self.page.locator('[class="trademo-table-arrow-button"]').nth(1)
-        # if next_button.is_visible() and next_button.is_enabled():
-        #     next_button.click()
-        #     self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(
-        #         state="visible", timeout=100000
-        #     )
-        #     self.check_hs_code_in_shipmentgrid(file_name, validate)
-        # else:
-        #     print("✅ All pages validated")
-
-            if not self.invalid_entries:
-                print("📘 No invalid HS code found.")
-                return
-
-            # Save invalid entries to Excel
+        # --- Save to Excel only if invalid entries exist ---
+        if self.invalid_entries:
             os.makedirs("results", exist_ok=True)
             workbook = Workbook()
             sheet = workbook.active
-            sheet.title = "Invalid HS Codes"
+            sheet.title = "HS Code Data"
 
-            # Write headers
-            sheet.append(["Sl. No", "HS Code", "Matching Field"])
+            # Add "Validation" column
+            sheet.append(table_headers + ["Validation"])
 
-            # Red fill style
             red_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
 
-            for item in self.invalid_entries:
-                row = sheet.max_row + 1
-                sheet.cell(row=row, column=1, value=item["sl_no"])
-                hs_code_cell = sheet.cell(row=row, column=2, value=item["hs_code"])
-                matching_field_cell = sheet.cell(row=row, column=3, value=item["matching_field"])
-                hs_code_cell.fill = red_fill
-                matching_field_cell.fill = red_fill
+            for row_data in all_rows_data:
+                sheet.append(row_data)
+                if row_data and "Invalid" in row_data[-1]:
+                    # Highlight HS Code + Matching Field columns
+                    hs_col_index = self.HS_Code_field + 1
+                    match_col_index = self.Matching_Field + 1
+                    sheet.cell(row=sheet.max_row, column=hs_col_index).fill = red_fill
+                    sheet.cell(row=sheet.max_row, column=match_col_index).fill = red_fill
 
-            workbook.save(os.path.join("results", file_name))
-            print(f"📁 Invalid HSCode data saved to '{file_name}'")
+            file_path = f"results/search_page_{self.selected_hs_code}.xlsx"
+            workbook.save(file_path)
+            print(f"📁 All rows saved to {file_path} (invalid HS Codes highlighted in red)")
+        else:
+            print("📘 No invalid HS Codes found. Excel not generated.")
+
+        return self.invalid_entries
 
     def Validate_Discover_Insights(self):
         with self.page.expect_popup() as page1_info:
@@ -185,111 +216,137 @@ class Search:
         self.page.locator(".tw-bg-primary-purple-500").click()
 
         self.page.locator("//a[@id='nav-home-tab']").click()
+        self.page.wait_for_timeout(2000)
         self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(state="visible", timeout=100000)
 
-    def check_product_description_in_shipment_grid(self, file_name: str = None,validate: bool = True):
-        """Check product descriptions across all pages"""
+    def check_product_description_in_shipment_grid(self, validate: bool = True, use_pagination: bool = False):
+        """Check product descriptions across shipment grid pages"""
+
         if not hasattr(self, "invalid_entries"):
             self.invalid_entries = []
 
-            # --- Find header indexes dynamically ---
         headers = self.page.locator("table thead tr th")
         header_count = headers.count()
 
         self.S_No = None
-        self.M_field = None
-        self.P_desc = None
+        self.Matching_field = None
+        self.Product_field = None
 
+        # --- Extract headers ---
+        table_headers = []
         for i in range(header_count):
-            header_text = headers.nth(i).inner_text().strip().lower()
-            if header_text in ["s no", "sl no", "serial no"]:  # flexible match
+            header_text = headers.nth(i).inner_text().strip()
+            table_headers.append(header_text)
+
+            if header_text.lower() in ["s no", "sl no", "serial no"]:
                 self.S_No = i
-            elif header_text == "matching fields":
-                self.M_field = i
-            elif header_text in ["product description", "description"]:
-                self.P_desc = i
+            elif "matching" in header_text.lower():
+                self.Matching_field = i
+            elif header_text.lower() in ["product description", "description"]:
+                self.Product_field = i
 
         if self.S_No is None:
             raise Exception("❌ 'S No' column not found in table headers")
-        if self.M_field is None:
-            raise Exception("❌ 'Matching Fields' column not found in table headers")
-        if self.P_desc is None:
+        if self.Matching_field is None:
+            raise Exception("❌ 'Matching Field' column not found in table headers")
+        if self.Product_field is None:
             raise Exception("❌ 'Product Description' column not found in table headers")
 
-        print(f"✅ Found column indexes → S No: {self.S_No}, Matching Field: {self.M_field}, Product: {self.P_desc}")
+        print(
+            f"✅ Found column indexes → S No: {self.S_No}, Matching: {self.Matching_field}, Product: {self.Product_field}")
 
-        rows = self.page.locator("table tbody tr")
-        row_count = rows.count()
+        all_rows_data = []  # store all rows with full column values
+        keywords = self.selected_product.lower().split()  # e.g. "lab coat" -> ["lab", "coat"]
 
-        # Split search text into keywords (e.g., "lab coat" → ["lab", "coat"])
-        keywords = self.selected_product.lower().split()
+        # --- function to extract and validate current page ---
+        def process_current_page():
+            rows = self.page.locator("table tbody tr")
+            row_count = rows.count()
 
-        if validate:
             for i in range(row_count):
-                sl_no = rows.nth(i).locator("td").nth(self.S_No).inner_text().strip()
-                matching_field = rows.nth(i).locator("td").nth(self.M_field).inner_text().strip()
+                row_data = []
+                cells = rows.nth(i).locator("td")
+                cell_count = cells.count()
 
-                # Extract product description
-                product_span = rows.nth(i).locator("td").nth(self.P_desc).locator("[data-tip]").first
-                product_tip = product_span.get_attribute("data-tip") if product_span.count() > 0 else None
-                product = product_tip.strip() if product_tip else rows.nth(i).locator("td").nth(
-                    self.P_desc).inner_text().strip()
+                for j in range(cell_count):
+                    cell_text = cells.nth(j).inner_text().strip()
+                    row_data.append(cell_text)
 
-                print(f"🔎 Checking product: {product}")
+                validation_note = ""  # extra column for Excel
 
-                # ✅ Check if ANY keyword is in product
-                if any(k in product.lower() for k in keywords):
-                    print(f"✅ Valid product found: {product} at Sl. No: {sl_no}")
+                if validate:
+                    sl_no = row_data[self.S_No]
+                    matching_field = row_data[self.Matching_field]
+
+                    # Handle tooltip product description if present
+                    product_span = rows.nth(i).locator("td").nth(self.Product_field).locator("[data-tip]").first
+                    product_tip = product_span.get_attribute("data-tip") if product_span.count() > 0 else None
+                    product = product_tip.strip() if product_tip else rows.nth(i).locator("td").nth(
+                        self.Product_field).inner_text().strip()
+
+                    print(f"🔎 Checking product: {product}")
+
+                    row_data[self.Product_field] = product  # overwrite with tooltip if found
+
+                    # ✅ Keyword validation
+                    if any(k in product.lower() for k in keywords):
+                        print(f"✅ PASS: Product matches → {product} at sl.No: {sl_no}")
+                    else:
+                        print(f"❌ FAIL: Invalid product → {product} at sl.No: {sl_no}")
+                        self.invalid_entries.append({"slNo": sl_no, "Product": product})
+                        validation_note = "❌ Invalid Product"
+
+                    # ✅ Matching field validation
+                    if matching_field.lower() == "product description":
+                        print(f"✅ Shows Matching field as {matching_field} at sl.No: {sl_no}")
+                    else:
+                        print(f"❌ FAIL: Invalid matching field → {matching_field} at sl.No: {sl_no}")
+                        self.invalid_entries.append({"slNo": sl_no, "MatchingField": matching_field})
+                        validation_note = "❌ Invalid Matching Field"
+
+                row_data.append(validation_note)
+                all_rows_data.append(row_data)
+
+        # --- handle pagination if enabled ---
+        if use_pagination:
+            while True:
+                process_current_page()
+                next_button = self.page.locator('[class="trademo-table-arrow-button"]').nth(1)
+                if next_button.is_enabled():
+                    next_button.click()
+                    self.page.locator("table tbody tr td:nth-child(1)").first.wait_for(
+                        state="visible", timeout=100000
+                    )
                 else:
-                    print(f"❌ Invalid product found: {product} at Sl. No: {sl_no}")
-                    self.invalid_entries.append({"sl_no": sl_no, "product": product, "matching_field": matching_field})
+                    break
+        else:
+            process_current_page()
 
-                # Validate matching field
-                if matching_field.lower() == "product description":
-                    print(f"✅ Valid matching field: {matching_field} at Sl. No: {sl_no}")
-                else:
-                    print(f"❌ Invalid matching field: {matching_field} at Sl. No: {sl_no}")
-                    self.invalid_entries.append({"sl_no": sl_no, "product": product, "matching_field": matching_field})
-
-        # --- Handle pagination ---
-        # next_button = self.page.locator('[class="trademo-table-arrow-button"]').nth(1)
-        # if next_button.is_enabled():
-        #     next_button.click()
-        #     self.page.locator("table tbody tr td").first.wait_for(state="visible", timeout=100000)
-        #     self.check_product_description_in_shipment_grid(file_name, validate)  # recursive call
-        # else:
-        #     print("✅ All pages validated")
-
-            if not self.invalid_entries:
-                print("📘 No invalid products found.")
-                return
-
-            # Default filename if not passed
-            if not file_name:
-                os.makedirs("results", exist_ok=True)
-                file_name = "results/invalid_product_autosuggest.xlsx"
-
-            # Save invalid entries to Excel
+        # --- save to Excel only if failures ---
+        if self.invalid_entries:
+            os.makedirs("results", exist_ok=True)
             workbook = Workbook()
             sheet = workbook.active
-            sheet.title = "Invalid Products"
+            sheet.title = "Product Data"
 
-            # Write headers
-            sheet.append(["Sl. No", "Product", "Matching Field"])
+            # Write headers (+ extra validation column)
+            sheet.append(table_headers + ["Validation"])
 
-            # Red fill style
             red_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
 
-            for item in self.invalid_entries:
-                row = sheet.max_row + 1
-                sheet.cell(row=row, column=1, value=item["sl_no"])
-                prod_cell = sheet.cell(row=row, column=2, value=item["product"])
-                match_cell = sheet.cell(row=row, column=3, value=item["matching_field"])
-                prod_cell.fill = red_fill
-                match_cell.fill = red_fill
+            for row_data in all_rows_data:
+                sheet.append(row_data)
+                if row_data and "Invalid" in row_data[-1]:
+                    prod_col_index = self.Product_field + 1
+                    sheet.cell(row=sheet.max_row, column=prod_col_index).fill = red_fill
 
-            workbook.save(os.path.join("results", file_name))
-            print(f"📁 Invalid Product data saved to '{file_name}'")
+            file_path = f"results/product_data_{self.selected_product}.xlsx"
+            workbook.save(file_path)
+            print(f"📁 All rows saved to {file_path} (invalid products highlighted in red)")
+        else:
+            print("📘 No invalid product description found. Excel not generated.")
+
+        return self.invalid_entries
 
     def auto_suggest_shipper_search(self, shipper_name: str):
         """Test Shipper search functionality"""
@@ -316,12 +373,8 @@ class Search:
             '[class=" tw-text-xs tw-p-1 tw-rounded tw-bg-primary-purple-100 tw-text-primary-purple-600 tw-font-medium"]')).to_have_text(
             total_count)
 
-    def check_shipper_name(self, file_name: str, validate: bool = True):
+    def check_shipper_name_export_tab(self, validate: bool = True):
         """Check shipper names across all pages and collect invalid entries"""
-
-        if not hasattr(self, "invalid_shipper_entries"):
-            self.invalid_shipper_entries = []
-
         rows = self.page.locator("table tbody tr")
         row_count = rows.count()
 
@@ -352,45 +405,157 @@ class Search:
                     print(f"✅ Valid company name found: {company} at Sl. No: {sl_no}")
                 else:
                     print(f"❌ Invalid company name found: {company} at Sl. No: {sl_no}")
-                    self.invalid_shipper_entries.append({"sl_no": sl_no, "company": company})
 
-            # --- Pagination check ---
-            # next_button = self.page.locator('[class="trademo-table-arrow-button"]').nth(1)
-            # if next_button.is_enabled():
-            #     next_button.click()
-            #     self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(
-            #         state="visible", timeout=100000
-            #     )
-            #     self.check_shipper_name(file_name)  # recursive call
-            # else:
-            #     print("✅ All pages validated")
+    def validate_duplicate_country_names(self):
+        # Locate all company names in the "Company Name" column
+        country_elements = self.page.locator("//div[img[@class='trademo-search-flag mr-2']]")
+        count = country_elements.count()
 
-                if not self.invalid_shipper_entries:
-                    print("📘 No invalid shipper found.")
-                    return
+        print(f"🔍 Total countries found: {count -1}")
 
-                # Save invalid entries to Excel
-                os.makedirs("results", exist_ok=True)
-                workbook = Workbook()
-                sheet = workbook.active
-                sheet.title = "Invalid Shipper"
+        seen = set()
+        duplicates = []
 
-                # Write headers
-                sheet.append(["Sl. No", "Company"])
+        for i in range(count):
+            name = country_elements.nth(i).inner_text().strip()
 
-                # Red fill style for invalid cells
-                red_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
+            if name in seen:
+                print(f"❌ Duplicate found: '{name}' at row {i}")
+                duplicates.append(name)
+            else:
+                seen.add(name)
 
-                for item in self.invalid_shipper_entries:
-                    row = sheet.max_row + 1
-                    sheet.cell(row=row, column=1, value=item["sl_no"])
-                    company_cell = sheet.cell(row=row, column=2, value=item["company"])
-                    company_cell.fill = red_fill
+        if not duplicates:
+            print("✅ No duplicate country names found!")
+        else:
+            print(f"⚠️ Total Duplicates Found: {len(duplicates)} -> {duplicates}")
 
-                # Save Excel file
-                workbook.save(os.path.join("results", file_name))
-                print(f"📁 Invalid shipper data saved to '{file_name}'")
+    def normalize_company_name(self, name: str) -> str:
+        """
+        Normalize company names by shortening common terms.
+        Example: "Limited" → "Ltd", "Company" → "Co".
+        """
+        # Lowercase and strip spaces
+        name = name.lower().strip()
 
+        # Replace common full forms with abbreviations
+        replacements = {
+            r"\blimited\b": "ltd",
+        }
+
+        for pattern, replacement in replacements.items():
+            name = re.sub(pattern, replacement, name)
+
+        # Collapse multiple spaces
+        name = re.sub(r"\s+", " ", name)
+
+        return name
+
+    def check_Shipper_Name_in_theGrid_View(self, validate: bool = True, use_pagination: bool = False):
+        """Check shipper names across all pages and collect invalid entries"""
+
+        self.page.locator("//a[@id='nav-home-tab']").click()
+
+        if not hasattr(self, "invalid_shipper_entries"):
+            self.invalid_shipper_entries = []
+
+        headers = self.page.locator("table thead tr th")
+        header_count = headers.count()
+
+        self.S_No = None
+        self.Shipper_field = None
+
+        # --- Extract headers ---
+        table_headers = []
+        for i in range(header_count):
+            header_text = headers.nth(i).inner_text().strip()
+            table_headers.append(header_text)
+            if header_text.lower() in ["s no", "sl no", "serial no"]:
+                self.S_No = i
+            elif "shipper" in header_text.lower():
+                self.Shipper_field = i
+
+        if self.S_No is None:
+            raise Exception("❌ 'S No' column not found in table headers")
+        if self.Shipper_field is None:
+            raise Exception("❌ 'Shipper name' column not found in table headers")
+
+        print(f"✅ Found column indexes → S No: {self.S_No}, Shipper Name: {self.Shipper_field}")
+
+        all_rows_data = []
+
+        # --- Function to process one page ---
+        def process_current_page():
+            rows = self.page.locator("table tbody tr")
+            row_count = rows.count()
+
+            for i in range(row_count):
+                row_data = []
+                cells = rows.nth(i).locator("td")
+                cell_count = cells.count()
+
+                for j in range(cell_count):
+                    cell_text = cells.nth(j).inner_text().strip()
+                    row_data.append(cell_text)
+
+                validation_note = ""
+                if validate:
+                    shipper_name = row_data[self.Shipper_field]
+                    expected = self.normalize_company_name(self.selected_shipper)
+                    actual = self.normalize_company_name(shipper_name)
+                    sl_no = row_data[self.S_No]
+
+                    if expected == actual:
+                        print(f"✅ PASS: Correct shipper name '{actual}' at Sl. No: {sl_no}")
+                    else:
+                        print(f"❌ FAIL: Invalid shipper name '{shipper_name}' at Sl. No: {sl_no} "
+                              f"(Expected: {self.selected_shipper})")
+                        self.invalid_shipper_entries.append({"slNo": sl_no, "Company": shipper_name})
+                        validation_note = "❌ Invalid Shipper Name"
+
+                row_data.append(validation_note)
+                all_rows_data.append(row_data)
+
+        # --- Handle pagination if enabled ---
+        if use_pagination:
+            while True:
+                process_current_page()
+                next_button = self.page.locator('[class="trademo-table-arrow-button"]').nth(1)
+                if next_button.is_enabled():
+                    next_button.click()
+                    self.page.locator("table tbody tr td:nth-child(1)").first.wait_for(
+                        state="visible", timeout=100000
+                    )
+                else:
+                    break
+        else:
+            process_current_page()
+
+        # --- Save to Excel only if invalid found ---
+        if self.invalid_shipper_entries:
+            os.makedirs("results", exist_ok=True)
+            workbook = Workbook()
+            sheet = workbook.active
+            sheet.title = "Shipper Data"
+
+            sheet.append(table_headers + ["Validation"])
+
+            red_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
+
+            for row_data in all_rows_data:
+                sheet.append(row_data)
+                if row_data and "Invalid" in row_data[-1]:
+                    shipper_col_index = self.Shipper_field + 1
+                    sheet.cell(row=sheet.max_row, column=shipper_col_index).fill = red_fill
+
+            file_path = f"results/shipper_data_{self.selected_shipper}.xlsx"
+            workbook.save(file_path)
+            print(f"📁 All rows saved to {file_path} (invalid shipper names highlighted in red)")
+
+        else:
+            print("📘 No invalid shipper name found. Excel not generated.")
+
+        return self.invalid_shipper_entries
 
     def Validate_Discover_insight_link(self):
         expect(self.page.locator('[class="btn-link trademo-link text-capitalize"]')).to_have_text(self.selected_shipper.lower())
@@ -439,11 +604,114 @@ class Search:
         page2.close()
         self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(state="visible", timeout=100000)
 
-    def check_consignee_Name_Shipment_Grid(self, file_name: str, validate: bool = True):
-        """Check consignee names across shipment grid pages and collect invalid entries"""
+    def check_Consignee_Name_in_theGrid_View(self, validate: bool = True, use_pagination: bool = False):
+        """Check shipper names across all pages and collect invalid entries"""
+
+        self.page.locator("//a[@id='nav-home-tab']").click()
 
         if not hasattr(self, "invalid_consignee_entries"):
             self.invalid_consignee_entries = []
+
+        headers = self.page.locator("table thead tr th")
+        header_count = headers.count()
+
+        self.S_No = None
+        self.Consignee_field = None
+
+        # --- Extract headers ---
+        table_headers = []
+        for i in range(header_count):
+            header_text = headers.nth(i).inner_text().strip()
+            table_headers.append(header_text)
+            if header_text.lower() in ["s no", "sl no", "serial no"]:
+                self.S_No = i
+            elif "consignee" in header_text.lower():
+                self.Consignee_field = i
+
+        if self.S_No is None:
+            raise Exception("❌ 'S No' column not found in table headers")
+        if self.Consignee_field is None:
+            raise Exception("❌ 'Consignee name' column not found in table headers")
+
+        print(f"✅ Found column indexes → S No: {self.S_No}, Consignee Name: {self.Consignee_field}")
+
+        all_rows_data = []
+
+        # --- Function to process one page ---
+        def process_current_page():
+            rows = self.page.locator("table tbody tr")
+            row_count = rows.count()
+
+            for i in range(row_count):
+                row_data = []
+                cells = rows.nth(i).locator("td")
+                cell_count = cells.count()
+
+                for j in range(cell_count):
+                    cell_text = cells.nth(j).inner_text().strip()
+                    row_data.append(cell_text)
+
+                validation_note = ""
+                if validate:
+                    consignee_name = row_data[self.Consignee_field]
+                    expected = self.normalize_company_name(self.selected_consignee)
+                    actual = self.normalize_company_name(consignee_name)
+                    sl_no = row_data[self.S_No]
+
+                    if expected == actual:
+                        print(f"✅ PASS: Correct consignee name '{actual}' at Sl. No: {sl_no}")
+                    else:
+                        print(f"❌ FAIL: Invalid consignee name '{consignee_name}' at Sl. No: {sl_no} "
+                              f"(Expected: {self.selected_consignee})")
+                        self.invalid_shipper_entries.append({"slNo": sl_no, "Company": consignee_name})
+                        validation_note = "❌ Invalid Consignee Name"
+
+                row_data.append(validation_note)
+                all_rows_data.append(row_data)
+
+        # --- Handle pagination if enabled ---
+        if use_pagination:
+            while True:
+                process_current_page()
+                next_button = self.page.locator('[class="trademo-table-arrow-button"]').nth(1)
+                if next_button.is_enabled():
+                    next_button.click()
+                    self.page.locator("table tbody tr td:nth-child(1)").first.wait_for(
+                        state="visible", timeout=100000
+                    )
+                else:
+                    break
+        else:
+            process_current_page()
+
+        # --- Save to Excel only if invalid found ---
+        if self.invalid_consignee_entries:
+            os.makedirs("results", exist_ok=True)
+            workbook = Workbook()
+            sheet = workbook.active
+            sheet.title = "Consignee Data"
+
+            sheet.append(table_headers + ["Validation"])
+
+            red_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
+
+            for row_data in all_rows_data:
+                sheet.append(row_data)
+                if row_data and "Invalid" in row_data[-1]:
+                    consignee_col_index = self.Consignee_field + 1
+                    sheet.cell(row=sheet.max_row, column=consignee_col_index).fill = red_fill
+
+            file_path = f"results/consignee_data_{self.selected_consignee}.xlsx"
+            workbook.save(file_path)
+            print(f"📁 All rows saved to {file_path} (invalid consignee names highlighted in red)")
+
+        else:
+            print("📘 No invalid consignee name found. Excel not generated.")
+
+        return self.invalid_consignee_entries
+
+    def check_consignee_Name_Import_tab(self, validate: bool = True):
+        """Check consignee names across shipment grid pages and collect invalid entries"""
 
         rows = self.page.locator("table tbody tr")
         row_count = rows.count()
@@ -475,49 +743,6 @@ class Search:
                     print(f"✅ Valid consignee name found: {consignee_name} at Sl. No: {sl_no}")
                 else:
                     print(f"❌ Invalid consignee name found: {consignee_name} at Sl. No: {sl_no}")
-                    self.invalid_consignee_entries.append({
-                        "sl_no": sl_no,
-                        "consignee_name": consignee_name,
-                        "expected": self.selected_consignee
-                    })
-
-            # --- Pagination check ---
-            # next_button = self.page.locator('[class="trademo-table-arrow-button"]').nth(1)
-            # if next_button.is_enabled():
-            #     next_button.click()
-            #     self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(
-            #         state="visible", timeout=100000
-            #     )
-            #     self.check_consignee_Name_Shipment_Grid(file_name)  # recursive call
-            # else:
-            #     print("✅ All pages validated")
-
-                if not self.invalid_consignee_entries:
-                    print("📘 No invalid consignee found.")
-                    return
-
-                # Save invalid entries to Excel
-                os.makedirs("results", exist_ok=True)
-                workbook = Workbook()
-                sheet = workbook.active
-                sheet.title = "Invalid Consignee"
-
-                # Write headers
-                sheet.append(["Sl. No", "Consignee Name", "Expected"])
-
-                # Red fill style for invalid cells
-                red_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
-
-                for item in self.invalid_consignee_entries:
-                    row = sheet.max_row + 1
-                    sheet.cell(row=row, column=1, value=item["sl_no"])
-                    consignee_cell = sheet.cell(row=row, column=2, value=item["consignee_name"])
-                    consignee_cell.fill = red_fill
-                    sheet.cell(row=row, column=3, value=item["expected"])
-
-                # Save Excel file
-                workbook.save(os.path.join("results", file_name))
-                print(f"📁 Invalid consignee data saved to '{file_name}'")
 
     def Chemical_Search_auto_suggest(self,chemical:str):
         expect(self.page.get_by_placeholder(
@@ -533,7 +758,7 @@ class Search:
         # click on search button
         self.page.locator(".tw-bg-primary-purple-500").click()
 
-    def Check_Chemical_In_shipmentGrid(self, file_name: str, validate: bool = True):
+    def Check_Chemical_In_shipmentGrid(self, validate: bool = True, use_pagination: bool = False):
         self.page.locator("//a[@id='nav-home-tab']").click()
         self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(state="visible", timeout=100000)
 
@@ -548,13 +773,15 @@ class Search:
         self.M_field = None
         self.P_desc = None
 
+        table_headers = []
         for i in range(header_count):
-            header_text = headers.nth(i).inner_text().strip().lower()
-            if header_text in ["s no", "sl no", "serial no"]:  # flexible match
+            header_text = headers.nth(i).inner_text().strip()
+            table_headers.append(header_text)
+            if header_text.lower() in ["s no", "sl no", "serial no"]:
                 self.S_No = i
-            elif header_text == "matching fields":
+            elif header_text.lower() == "matching fields":
                 self.M_field = i
-            elif header_text in ["product description", "description"]:
+            elif header_text.lower() in ["product description", "description"]:
                 self.P_desc = i
 
         if self.S_No is None:
@@ -566,88 +793,94 @@ class Search:
 
         print(f"✅ Found column indexes → S No: {self.S_No}, Matching Field: {self.M_field}, Product: {self.P_desc}")
 
-        rows = self.page.locator("table tbody tr")
-        row_count = rows.count()
-
-        # Split search text into keywords (e.g., "lab coat" → ["lab", "coat"])
+        all_rows_data = []  # store all rows with extra Validation col
         keywords = self.selected_chemical.lower().split()
 
-        if validate:
-            for i in range(row_count):
-                sl_no = rows.nth(i).locator("td").nth(self.S_No).inner_text().strip()
-                matching_field = rows.nth(i).locator("td").nth(self.M_field).inner_text().strip()
+        # --- Define function to process current page ---
+        def process_current_page():
+            rows = self.page.locator("table tbody tr")
+            row_count = rows.count()
 
-                # Extract product description
+            for i in range(row_count):
+                row_data = []
+                cells = rows.nth(i).locator("td")
+                cell_count = cells.count()
+                for j in range(cell_count):
+                    cell_text = cells.nth(j).inner_text().strip()
+                    row_data.append(cell_text)
+
+                sl_no = row_data[self.S_No]
+                matching_field = row_data[self.M_field]
                 product_span = rows.nth(i).locator("td").nth(self.P_desc).locator("[data-tip]").first
                 product_tip = product_span.get_attribute("data-tip") if product_span.count() > 0 else None
-                product = product_tip.strip() if product_tip else rows.nth(i).locator("td").nth(
-                    self.P_desc).inner_text().strip()
+                product = product_tip.strip() if product_tip else row_data[self.P_desc]
 
-                print(f"🔎 Checking product: {product}")
-
+                validation_note = ""  # to add in Excel
                 is_invalid = False
 
-                # ✅ Check if ANY keyword is in product
-                if any(k in product.lower() for k in keywords):
-                    print(f"✅ Valid product found: {product} at Sl. No: {sl_no}")
+                if validate:
+                    # ✅ Keyword check
+                    if any(k in product.lower() for k in keywords):
+                        print(f"✅ PASS: Chemical '{product}' at Sl. No: {sl_no}")
+                    else:
+                        print(f"❌ FAIL: Invalid Chemical'{product}' at Sl. No: {sl_no}")
+                        is_invalid = True
+                        self.invalid_entries.append({"slNo": sl_no, "Chemical": product})
+
+                    # ✅ Matching field check
+                    if matching_field.lower() == "product description":
+                        print(f"✅ Valid matching field '{matching_field}' at Sl. No: {sl_no}")
+                    else:
+                        print(f"❌ Invalid matching field '{matching_field}' at Sl. No: {sl_no}")
+                        is_invalid = True
+                        self.invalid_entries.append({"slNo": sl_no, "MatchingField": matching_field})
+
+                    if is_invalid:
+                        validation_note = "❌ Invalid Chemical Data"
+
+                row_data.append(validation_note)
+                all_rows_data.append(row_data)
+
+        # --- Handle pagination ---
+        if use_pagination:
+            while True:
+                process_current_page()
+                next_button = self.page.locator('[class="trademo-table-arrow-button"]').nth(1)
+                if next_button.is_enabled():
+                    next_button.click()
+                    self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(
+                        state="visible", timeout=100000
+                    )
                 else:
-                    print(f"❌ Invalid product found: {product} at Sl. No: {sl_no}")
-                    is_invalid = True
+                    break
+        else:
+            process_current_page()
 
-                # Validate matching field
-                if matching_field.lower() == "product description":
-                    print(f"✅ Valid matching field: {matching_field} at Sl. No: {sl_no}")
-                else:
-                    print(f"❌ Invalid matching field: {matching_field} at Sl. No: {sl_no}")
-                    is_invalid = True
-
-                # If either field is invalid, store the whole row
-                if is_invalid:
-                    self.invalid_entries.append({
-                        "slNo": sl_no,
-                        "Chemical": product,
-                        "matching_field": matching_field
-                    })
-
-        # --- Check next page ---
-        # next_button = self.page.locator('[class="trademo-table-arrow-button"]').nth(1)
-        # if next_button.is_enabled():
-        #     next_button.click()
-        #     self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(
-        #         state="visible", timeout=100000
-        #     )
-        #     self.Check_Chemical_In_shipmentGrid(file_name)
-        # else:
-        #     print("✅ All pages validated")
-
-            if not self.invalid_entries:
-                print("📘 No invalid chemical found.")
-                return
-
-            # Save invalid entries to Excel
+        # --- Save results ---
+        if self.invalid_entries:
             os.makedirs("results", exist_ok=True)
             workbook = Workbook()
             sheet = workbook.active
-            sheet.title = "Invalid Chemical"
+            sheet.title = "Chemical Data"
 
-            # Write headers
-            sheet.append(["Sl. No", "Chemical", "Matching Field"])
+            # Add Validation column header
+            sheet.append(table_headers + ["Validation"])
 
-            # Red fill style
             red_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
 
-            for item in self.invalid_entries:
-                row = sheet.max_row + 1
-                sheet.cell(row=row, column=1, value=item["slNo"])
-                chemical_cell = sheet.cell(row=row, column=2, value=item["Chemical"])
-                matching_field_cell = sheet.cell(row=row, column=3, value=item["matching_field"])
-                chemical_cell.fill = red_fill
-                matching_field_cell.fill = red_fill
+            for row_data in all_rows_data:
+                sheet.append(row_data)
+                if row_data and "Invalid" in row_data[-1]:
+                    product_col_index = self.P_desc + 1
+                    sheet.cell(row=sheet.max_row, column=product_col_index).fill = red_fill
 
-            # Save Excel file
-            workbook.save(os.path.join("results", file_name))
-            print(f"📁 Invalid chemical data saved to '{file_name}'")
+            file_path = f"results/chemical_data_{self.selected_chemical}.xlsx"
+            workbook.save(file_path)
+            print(f"📁 All rows saved to {file_path} (invalid chemical data highlighted in red)")
+        else:
+            print("📘 No invalid chemical data found. Excel not generated.")
 
+        return self.invalid_entries
 
     def auto_suggest_search_port(self,port:str):
         expect(self.page.get_by_placeholder(
@@ -667,138 +900,158 @@ class Search:
         self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(state="visible", timeout=100000)
         #expect(self.page.get_by_role("main")).to_contain_text("chennai, tamil nadu, india")
 
-    def Check_Port_description_Shipment_Grid(self, file_name: str, validate: bool = True):
-        if not hasattr(self, "invalid_entries"):
-            self.invalid_entries = []
+    def Check_Port_description_Shipment_Grid(self, validate: bool = True, use_pagination: bool = False):
+        self.page.locator("//a[@id='nav-home-tab']").click()
 
-        # --- Get header indexes dynamically ---
+        self.invalid_entries = []
+
         headers = self.page.locator("table thead tr th")
-        expect(self.page.locator("table thead tr th").first).to_be_visible()
         header_count = headers.count()
 
         self.S_No = None
         self.M_field = None
-        self.P_desc = None
         self.Port_Lading_col = None
         self.Port_Unlading_col = None
 
+        # Extract headers
+        table_headers = []
         for i in range(header_count):
-            header_text = headers.nth(i).inner_text().strip().lower()
-
-            if header_text in ["s no", "sl no", "serial no"]:
+            header_text = headers.nth(i).inner_text().strip()
+            table_headers.append(header_text)
+            if header_text.lower() in ["s no", "sl no", "serial no"]:
                 self.S_No = i
-            elif header_text in ["matching field", "matching fields"]:
+            elif header_text.lower() in ["matching field", "matching fields"]:
                 self.M_field = i
-            elif header_text in ["product description", "description"]:
-                self.P_desc = i
-            elif header_text in ["port of lading", "loading port"]:
+            elif header_text.lower() in ["port of lading", "loading port"]:
                 self.Port_Lading_col = i
-            elif header_text in ["port of unlading", "unloading port"]:
+            elif header_text.lower() in ["port of unlading", "unloading port"]:
                 self.Port_Unlading_col = i
 
-        # --- Safety checks ---
         if self.S_No is None:
             raise Exception("❌ 'S No' column not found in table headers")
         if self.M_field is None:
             raise Exception("❌ 'Matching Field(s)' column not found in table headers")
         if self.Port_Lading_col is None and self.Port_Unlading_col is None:
-            raise Exception("❌ Neither 'Port of Lading' nor 'Port of Unlading' column found in table headers")
+            raise Exception("❌ Neither 'Port of Lading' nor 'Port of Unlading' found in headers")
 
-        print(f"✅ Column Indexes => S_No: {self.S_No}, M_field: {self.M_field}, "
-              f"Port_Lading: {self.Port_Lading_col}, Port_Unlading: {self.Port_Unlading_col}")
+        print(f"✅ Found column indexes → S No: {self.S_No}, Matching Field: {self.M_field}, "
+              f"Port Lading: {self.Port_Lading_col}, Port Unlading: {self.Port_Unlading_col}")
 
-        # --- Validate rows if requested ---
-        rows = self.page.locator("table tbody tr")
-        row_count = rows.count()
+        all_rows_data = []  # store all rows with validation info
 
-        if validate:
+        # --- process one page ---
+        def process_current_page():
+            rows = self.page.locator("table tbody tr")
+            row_count = rows.count()
+
             for i in range(row_count):
-                matching_field = rows.nth(i).locator("td").nth(self.M_field).inner_text().strip()
-                sl_no = rows.nth(i).locator("td").nth(self.S_No).inner_text().strip()
+                row_data = []
+                cells = rows.nth(i).locator("td")
+                cell_count = cells.count()
+                for j in range(cell_count):
+                    row_data.append(cells.nth(j).inner_text().strip())
 
-                is_invalid = False
+                validation_note = ""  # Excel column
+                sl_no = row_data[self.S_No]
+                matching_field = row_data[self.M_field]
                 port_name = None
+                is_invalid = False
 
-                # --- Handle Port of Lading ---
-                if matching_field.lower() == "port of lading" and self.Port_Lading_col is not None:
-                    product_span = rows.nth(i).locator("td").nth(self.Port_Lading_col).locator("[data-tip]").first
-                    product_tip = product_span.get_attribute("data-tip") if product_span.count() > 0 else None
-                    port_name = product_tip.strip() if product_tip else rows.nth(i).locator("td").nth(
-                        self.Port_Lading_col).inner_text().strip()
+                if validate:
+                    # --- Port of Lading ---
+                    if matching_field.lower() == "port of lading" and self.Port_Lading_col is not None:
+                        port_span = rows.nth(i).locator("td").nth(self.Port_Lading_col).locator("[data-tip]").first
+                        port_tip = port_span.get_attribute("data-tip") if port_span.count() > 0 else None
+                        port_name = port_tip.strip() if port_tip else row_data[self.Port_Lading_col]
 
-                    self.port_name_hyperlink = port_name.split(",")[0].strip()
+                        self.port_name_hyperlink = port_name.split(",")[0].strip()
 
-                    print(self.port_name_hyperlink)
+                        print(self.port_name_hyperlink)
 
-                    if self.selected_port.lower().strip() in port_name.lower().strip():
-                        print(f"✅ Port of Lading match: {port_name} at Sl. No: {sl_no}")
+                        if self.selected_port.lower().strip() in port_name.lower().strip():
+                            print(f"✅ PASS: Port of Lading '{port_name}' at Sl. No: {sl_no}")
+                        else:
+                            print(f"❌ FAIL: Invalid Port of Lading '{port_name}' at Sl. No: {sl_no}")
+                            is_invalid = True
+                            validation_note = "❌ Invalid Port of Lading"
+
+                    # --- Port of Unlading ---
+                    elif matching_field.lower() == "port of unlading" and self.Port_Unlading_col is not None:
+                        port_span = rows.nth(i).locator("td").nth(self.Port_Unlading_col).locator("[data-tip]").first
+                        port_tip = port_span.get_attribute("data-tip") if port_span.count() > 0 else None
+                        port_name = port_tip.strip() if port_tip else row_data[self.Port_Unlading_col]
+
+                        self.port_name_hyperlink = port_name.split(",")[0].strip()
+                        print(self.port_name_hyperlink)
+
+                        if self.selected_port.lower().strip() in port_name.lower().strip():
+                            print(f"✅ PASS: Port of Unlading '{port_name}' at Sl. No: {sl_no}")
+                        else:
+                            print(f"❌ FAIL: Invalid Port of Unlading '{port_name}' at Sl. No: {sl_no}")
+                            is_invalid = True
+                            validation_note = "❌ Invalid Port of Unlading"
+
+                    # --- Unexpected Matching Field ---
                     else:
-                        print(f"❌ Invalid Port of Lading: {port_name} at Sl. No: {sl_no}")
+                        print(f"❌ FAIL: Unexpected Matching field '{matching_field}' at Sl. No: {sl_no}")
                         is_invalid = True
+                        validation_note = "❌ Invalid Matching Field"
 
-                # --- Handle Port of Unlading ---
-                elif matching_field.lower() == "port of unlading" and self.Port_Unlading_col is not None:
-                    product_span = rows.nth(i).locator("td").nth(self.Port_Unlading_col).locator("[data-tip]").first
-                    product_tip = product_span.get_attribute("data-tip") if product_span.count() > 0 else None
-                    port_name = product_tip.strip() if product_tip else rows.nth(i).locator("td").nth(
-                        self.Port_Unlading_col).inner_text().strip()
+                    if is_invalid:
+                        self.invalid_entries.append({
+                            "slNo": sl_no,
+                            "Port": port_name if port_name else "N/A",
+                            "MatchingField": matching_field
+                        })
 
-                    if self.selected_port.lower().strip() in port_name.lower().strip():
-                        print(f"✅ Port of Unlading match: {port_name} at Sl. No: {sl_no}")
-                    else:
-                        print(f"❌ Invalid Port of Unlading: {port_name} at Sl. No: {sl_no}")
-                        is_invalid = True
+                row_data.append(validation_note)
+                all_rows_data.append(row_data)
 
-                # --- Invalid Matching Field ---
+        # --- handle pagination ---
+        if use_pagination:
+            while True:
+                process_current_page()
+                next_button = self.page.locator('[class="trademo-table-arrow-button"]').nth(1)
+                if next_button.is_enabled():
+                    next_button.click()
+                    self.page.locator("table tbody tr td:nth-child(1)").first.wait_for(
+                        state="visible", timeout=100000
+                    )
                 else:
-                    print(f"❌ Invalid Matching field: {matching_field} at Sl. No: {sl_no}")
-                    is_invalid = True
-        #         #Check next page
-        #         next_button = self.page.locator('[class="trademo-table-arrow-button"]').nth(1)
-        #         if next_button.is_enabled():
-        #             next_button.click()
-        #             self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(
-        #                 state="visible", timeout=100000
-        #             )
-        #             self.Check_Port_description_Shipment_Grid(file_name)
-        #         else:
-        #             print("✅ All pages validated")
-        #
-        #         # --- If invalid, store data ---
-        #         if is_invalid:
-        #             self.invalid_entries.append({
-        #                 "slNo": sl_no,
-        #                 "Port": port_name if port_name else "N/A",
-        #                 "matching_field": matching_field
-        #             })
-        #
-        # # --- Save invalid entries ---
-        # if not self.invalid_entries:
-        #     print("📘 No invalid entries found.")
-        #     return
-        #
-        # os.makedirs("results", exist_ok=True)
-        # workbook = Workbook()
-        # sheet = workbook.active
-        # sheet.title = "Invalid Port"
-        #
-        # # Headers
-        # sheet.append(["Sl. No", "Port", "Matching Field"])
-        #
-        # # Red fill style
-        # red_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
-        #
-        # for item in self.invalid_entries:
-        #     row = sheet.max_row + 1
-        #     sheet.cell(row=row, column=1, value=item["slNo"])
-        #     port_cell = sheet.cell(row=row, column=2, value=item["Port"])
-        #     match_field_cell = sheet.cell(row=row, column=3, value=item["matching_field"])
-        #
-        #     # Apply red fill
-        #     port_cell.fill = red_fill
-        #     match_field_cell.fill = red_fill
-        # workbook.save(os.path.join("results", file_name))
-        # print(f"📁 Invalid Port data saved to 'results/{file_name}'")
+                    break
+        else:
+            process_current_page()
+
+        # --- save results ---
+        if self.invalid_entries:
+            os.makedirs("results", exist_ok=True)
+            workbook = Workbook()
+            sheet = workbook.active
+            sheet.title = "Port Data"
+
+            sheet.append(table_headers + ["Validation"])
+
+            red_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
+
+            for row_data in all_rows_data:
+                sheet.append(row_data)
+                if row_data and "Invalid" in row_data[-1]:
+                    # highlight port column
+                    if "lading" in row_data[self.M_field].lower():
+                        col_index = self.Port_Lading_col + 1
+                    elif "unlading" in row_data[self.M_field].lower():
+                        col_index = self.Port_Unlading_col + 1
+                    else:
+                        col_index = self.M_field + 1
+                    sheet.cell(row=sheet.max_row, column=col_index).fill = red_fill
+
+            file_path = f"results/port_data_{self.selected_port}.xlsx"
+            workbook.save(file_path)
+            print(f"📁 All rows saved to {file_path} (invalid ports highlighted in red)")
+        else:
+            print("📘 No invalid port entries found. Excel not generated.")
+
+        return self.invalid_entries
 
     def Validate_Discover_insight_ports(self):
          with self.page.expect_popup() as page3_info:
@@ -817,162 +1070,274 @@ class Search:
         self.page.get_by_role("textbox", name="Type to search in all categories or choose from the category below").fill(product_name)
         self.page.locator(".tw-bg-primary-purple-500").click()
 
-    def Verify_Shipment_tab_Manual_suggest(self, Extracted_Text: str, validate: bool = True):
+
+    def Verify_Shipment_tab_Manual_suggest(self, Extracted_Text: str, validate: bool = True,
+                                           use_pagination: bool = False):
+        # Open shipment tab
+        self.page.pause()
+        self.page.locator("//a[@id='nav-home-tab']").click()
+        self.page.wait_for_timeout(2000)
+
+        rows = self.page.locator("table tbody tr")
+        row_count = rows.count()
+
+        # ✅ Flexible row check
+        if row_count < 10:
+            print(f"⚠️ Only {row_count} rows found (less than 10). Skipping strict check.")
+        else:
+            expect(rows).to_have_count(10, timeout=100000)
+
+        # Keep invalid_entries consistent across calls
         if not hasattr(self, "invalid_entries"):
             self.invalid_entries = []
 
-        # Click on the Shipment tab
-        self.page.locator("//a[@id='nav-home-tab']").click()
-        rows = self.page.locator("table tbody tr")
-        row_count = rows.count()
+        # --- Extract headers dynamically ---
+        headers = self.page.locator("table thead tr th")
+        header_count = headers.count()
+
+        table_headers = []
+        self.S_No = self.M_field = self.Product_col = None
+        self.Shipper_col = self.Consignee_col = self.Address_col = None
+
+        for i in range(header_count):
+            header_text = headers.nth(i).inner_text().strip()
+            table_headers.append(header_text)
+
+            lower = header_text.lower()
+            if lower in ["s no", "sl no", "serial no"]:
+                self.S_No = i
+            elif "matching" in lower:
+                self.M_field = i
+            elif "product" in lower:
+                self.Product_col = i
+            elif "shipper" in lower and "standardized" not in lower:
+                self.Shipper_col = i
+            elif "consignee" in lower and "address" not in lower and "standardized" not in lower:
+                self.Consignee_col = i
+            elif "address" in lower:
+                self.Address_col = i
+
+        if self.S_No is None or self.M_field is None:
+            raise Exception("❌ Required columns ('S No' or 'Matching Field') not found in headers")
+
         extracted_text_lower = Extracted_Text.lower()
+        all_rows_data = []
 
-        if validate:
+        # --- process one page ---
+        def process_current_page():
+            row_count = rows.count()
+
             for i in range(row_count):
-                # ✅ Initialize variables for each row
-                consignee_address = ""
-                Shipper_Standardized_Name = ""
-                Consignee_Standardized_Name = ""
+                row_data = []
+                cells = rows.nth(i).locator("td")
+                cell_count = cells.count()
 
-                view = rows.nth(i).locator("td").nth(1)
-                matching_field = rows.nth(i).locator("td").nth(3).inner_text().strip()
-                sl_no = rows.nth(i).locator("td").nth(2).inner_text().strip()
-                shipper_name = rows.nth(i).locator("td").nth(8).inner_text().strip()
-                consignee_name = rows.nth(i).locator("td").nth(9).inner_text().strip()
+                for j in range(cell_count):
+                    row_data.append(cells.nth(j).inner_text().strip())
 
-                product_span = rows.nth(i).locator("td").nth(6).locator("[data-tip]").first
-                product_tip = product_span.get_attribute("data-tip") if product_span.count() > 0 else None
-                product = product_tip.strip() if product_tip and product_tip.strip() else rows.nth(i).locator("td").nth(
-                    6).inner_text().strip()
-
+                validation_note = []
                 is_invalid = False
-                matching_fields_list = [mf.strip() for mf in matching_field.split(",")]
 
-                for mf in matching_fields_list:
-                    if mf == "Product Description":
-                        if extracted_text_lower in product.lower():
-                            print(f"✅ Product contains keyword: {product} at Sl. No: {sl_no}")
-                        else:
-                            print(f"❌ Product does not contain keyword: {product} at Sl. No: {sl_no}")
-                            is_invalid = True
+                if validate:
+                    sl_no = row_data[self.S_No]
+                    matching_field = row_data[self.M_field]
+                    matching_fields_list = [mf.strip() for mf in matching_field.split(",")]
 
-                    elif mf == "Shipper Name":
-                        if extracted_text_lower in shipper_name.lower():
-                            print(f"✅ Shipper name contains keyword: {shipper_name} at Sl. No: {sl_no}")
-                        else:
-                            print(f"❌ Shipper name mismatch: {shipper_name} at Sl. No: {sl_no}")
-                            is_invalid = True
+                    product = row_data[self.Product_col] if self.Product_col else ""
+                    shipper_name = row_data[self.Shipper_col] if self.Shipper_col else ""
+                    consignee_name = row_data[self.Consignee_col] if self.Consignee_col else ""
 
-                    elif mf == "Consignee Name":
-                        if extracted_text_lower in consignee_name.lower():
-                            print(f"✅ Consignee name contains keyword: {consignee_name} at Sl. No: {sl_no}")
-                        else:
-                            print(f"❌ Search keyword not found in consignee name: {consignee_name} at Sl. No: {sl_no}")
-                            is_invalid = True
+                    consignee_address = shipper_std_name = consignee_std_name = ""
 
-                    elif mf == "Consignee Address":
-                        view.click()
-                        read_more_locator = self.page.get_by_text("Read more").last
-                        self.page.wait_for_timeout(1000)  # wait for rendering
+                    # --- Validation checks ---
+                    for mf in matching_fields_list:
+                        if mf == "Product Description":
+                            parts = split_location(extracted_text_lower)  # e.g. ['shekou', 'port']
+                            product_span = rows.nth(i).locator("td").nth(self.Product_col).locator("[data-tip]").first
+                            product_tip = product_span.get_attribute("data-tip") if product_span.count() > 0 else None
+                            product = product_tip.strip() if product_tip else rows.nth(i).locator("td").nth(
+                                self.Product_col).inner_text().strip()
 
-                        if read_more_locator.is_visible():
-                            print("🔍 'Read More' is visible, clicking...")
-                            read_more_locator.click()
-                        consignee_address = self.page.locator("span > .read-more-cards").last.inner_text().strip()
+                            print(f"🔎 Checking product: {product}")
+                            product_lower = product.lower()
 
-                        if extracted_text_lower in consignee_address.lower():
-                            print(f"✅ Address contains keyword {consignee_address} at Sl. No: {sl_no}")
-                        else:
-                            print(
-                                f"❌ Search keyword not found in consignee address: {consignee_address} at Sl. No: {sl_no}")
-                            is_invalid = True
-                        self.page.locator("//span[@aria-hidden='true']").click()
+                            matched_word = None
+                            for word in parts:
+                                if word in product_lower:
+                                    matched_word = word
+                                    break
 
-                    elif mf == "Shipper Standardized Name":
-                        view.click()
-                        read_more_locator = self.page.get_by_text("Read more").first
-                        self.page.wait_for_timeout(1000)
+                            if matched_word:
+                                print(f"✅ {mf} contains keyword '{matched_word}' at Sl. No: {sl_no}")
+                            else:
+                                print(f"❌ {mf} mismatch: {product} at Sl. No: {sl_no}")
+                                is_invalid, validation_note = True, [f"❌ Invalid Product Description in Grid"]
 
-                        if read_more_locator.is_visible():
-                            read_more_locator.click()
+                        elif mf == "Shipper Name":
+                            if extracted_text_lower in shipper_name.lower():
+                                print(f"✅ Shipper name valid at Sl. No: {sl_no}")
+                            else:
+                                print(f"❌ Shipper name mismatch: {shipper_name} at Sl. No: {sl_no}")
+                                is_invalid, validation_note = True, ["❌ Invalid Shipper in Grid"]
 
-                        Shipper_Standardized_Name = self.page.locator(" //span[normalize-space(text())='Shipper Standardized Name'] /ancestor::div[contains(@class,'col-5')] /following-sibling::div[contains(@class,'col-7')]//a").inner_text().strip()
-                        if extracted_text_lower in Shipper_Standardized_Name.lower():
-                            print(
-                                f"✅ Shipper Standardized Name contains keyword {Shipper_Standardized_Name} at Sl. No: {sl_no}")
-                        else:
-                            print(
-                                f"❌ Search keyword not found in shipper standardized name: {Shipper_Standardized_Name} at Sl. No: {sl_no}")
-                            is_invalid = True
-                        self.page.locator("//span[@aria-hidden='true']").click()
+                        elif mf == "Consignee Name":
+                            if extracted_text_lower in consignee_name.lower():
+                                print(f"✅ Consignee name valid at Sl. No: {sl_no}")
+                            else:
+                                print(f"❌ Consignee name mismatch: {consignee_name} at Sl. No: {sl_no}")
+                                is_invalid, validation_note = True, ["❌ Invalid Consignee in Grid"]
 
-                    elif mf == "Consignee Standardized Name":
-                        view.click()
-                        Consignee_Standardized_Name = self.page.locator(" //span[normalize-space(text())='Consignee Standardized Name'] /ancestor::div[contains(@class,'col-5')] /following-sibling::div[contains(@class,'col-7')]//a").inner_text().strip()
-                        if extracted_text_lower in Consignee_Standardized_Name.lower():
-                            print(
-                                f"✅ Consignee Standardized Name contains keyword {Consignee_Standardized_Name} at Sl. No: {sl_no}")
-                        else:
-                            print(
-                                f"❌ Search keyword not found in consignee standardized name: {Consignee_Standardized_Name} at Sl. No: {sl_no}")
-                            is_invalid = True
-                        self.page.locator("//span[@aria-hidden='true']").click()
+                        elif mf == "Shipper Address":
+                            rows.nth(i).locator("td").nth(1).click()
+                            self.page.wait_for_timeout(2000)
 
-                if is_invalid:
-                    self.invalid_entries.append({
-                        "matching_field": matching_field,
-                        "slNo": sl_no,
-                        "product": product,
-                        "Shipper_Name": shipper_name,
-                        "Consignee_Name": consignee_name,
-                        "Consignee_Address": consignee_address,
-                        "Shipper_Standardized_Name": Shipper_Standardized_Name,
-                        "Consignee_Standardized_Name": Consignee_Standardized_Name
-                    })
+                            read_more_locator = self.page.get_by_text("Read more").first
+                            self.page.wait_for_timeout(1000)  # wait for rendering
 
-        # Handle next page
-        # next_button = self.page.locator('[class="trademo-table-arrow-button"]').nth(1)
-        # if next_button.is_enabled():
-        #     next_button.click()
-        #     self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(state="visible", timeout=100000)
-        #     self.Verify_Shipment_tab_Manual_suggest(Extracted_Text)
-        # else:
-        #     print("✅ All pages validated")
-            if not self.invalid_entries:
-                print("📘 No invalid entries found.")
-                return
+                            if read_more_locator.is_visible():
+                                print("🔍 'Read More' is visible, clicking...")
+                                read_more_locator.click()
+                                self.page.wait_for_timeout(500)
 
-            # Save invalid entries to Excel
+                                read_more = self.page.locator("div.read-more-cards").first
+                                try:
+                                    address_text = read_more.inner_text().strip()
+                                    parts = split_location(extracted_text_lower)  # e.g. ['shekou', 'port']
+                                    address_lower = address_text.lower()
+
+                                    matched_word = None
+                                    for word in parts:
+                                        if word in address_lower:
+                                            matched_word = word
+                                            break
+
+                                    if matched_word:
+                                        print(f"✅ {mf} contains keyword '{matched_word}' at Sl. No: {sl_no}")
+                                    else:
+                                        print(f"❌ {mf} mismatch: {address_text} at Sl. No: {sl_no}")
+                                        is_invalid, validation_note = True, [f"❌ Invalid shipper address in view"]
+                                finally:
+                                    close_btn = self.page.locator("//span[@aria-hidden='true']")
+                                    if close_btn.is_visible():
+                                        close_btn.click()
+                            else:
+                                print("❌ 'Read more' link not found for Shipper Address")
+
+                        elif mf == "Consignee Address":
+                            rows.nth(i).locator("td").nth(1).click()
+                            self.page.wait_for_timeout(2000)
+
+                            read_more_locator = self.page.get_by_text("Read more").last
+                            self.page.wait_for_timeout(1000)  # wait for rendering
+
+                            if read_more_locator.is_visible():
+                                print("🔍 'Read More' is visible, clicking...")
+                                read_more_locator.click()
+                                self.page.wait_for_timeout(500)
+
+                                read_more = self.page.locator("div.read-more-cards").last
+                                try:
+                                    address_text = read_more.inner_text().strip()
+                                    parts = split_location(extracted_text_lower)  # e.g. ['shekou', 'port']
+                                    address_lower = address_text.lower()
+
+                                    matched_word = None
+                                    for word in parts:
+                                        if word in address_lower:
+                                            matched_word = word
+                                            break
+
+                                    if matched_word:
+                                        print(f"✅ {mf} contains keyword '{matched_word}' at Sl. No: {sl_no}")
+                                    else:
+                                        print(f"❌ {mf} mismatch: {address_text} at Sl. No: {sl_no}")
+                                        is_invalid, validation_note = True, [f"❌ Invalid consignee address in view"]
+                                finally:
+                                    close_btn = self.page.locator("//span[@aria-hidden='true']")
+                                    if close_btn.is_visible():
+                                        close_btn.click()
+                            else:
+                                print("❌ 'Read more' link not found for Consignee Address")
+
+                        elif mf == "Shipper Standardized Name":
+                            rows.nth(i).locator("td").nth(1).click()
+                            self.page.wait_for_timeout(2000)
+                             # Extract Shipper Standardized Name
+                            Shipper_Standardized_Name = self.page.locator(
+                                " //span[normalize-space(text())='Shipper Standardized Name'] /ancestor::div[contains(@class,'col-5')] /following-sibling::div[contains(@class,'col-7')]//a").inner_text().strip()
+                            if extracted_text_lower in Shipper_Standardized_Name.lower():
+                                print(
+                                    f"✅ Shipper Standardized Name contains keyword {Shipper_Standardized_Name} at Sl. No: {sl_no}")
+                            else:
+                                print(
+                                    f"❌ Search keyword not found in shipper standardized name: {Shipper_Standardized_Name} at Sl. No: {sl_no}")
+                                is_invalid, validation_note = True, ["❌ Invalid shipper standardized name in Grid"]
+                            self.page.locator("//span[@aria-hidden='true']").click()
+
+                        elif mf == "Consignee Standardized Name":
+                            rows.nth(i).locator("td").nth(1).click()
+                            Consignee_Standardized_Name = self.page.locator(
+                                " //span[normalize-space(text())='Consignee Standardized Name'] /ancestor::div[contains(@class,'col-5')] /following-sibling::div[contains(@class,'col-7')]//a").inner_text().strip()
+                            if extracted_text_lower in Consignee_Standardized_Name.lower():
+                                print(
+                                    f"✅ Consignee Standardized Name contains keyword {Consignee_Standardized_Name} at Sl. No: {sl_no}")
+                            else:
+                                print(
+                                    f"❌ Search keyword not found in consignee standardized name: {Consignee_Standardized_Name} at Sl. No: {sl_no}")
+                                is_invalid, validation_note = True, ["❌ Invalid consignee standardized name in Grid"]
+                            self.page.locator("//span[@aria-hidden='true']").click()
+
+                    if is_invalid:
+                        self.invalid_entries.append({
+                            "slNo": sl_no,
+                            "matching_field": matching_field,
+                            "product": product,
+                            "Shipper_Name": shipper_name,
+                            "Consignee_Name": consignee_name,
+                            "Consignee_Address": consignee_address,
+                            "Shipper_Standardized_Name": shipper_std_name,
+                            "Consignee_Standardized_Name": consignee_std_name,
+                        })
+
+                row_data.append(", ".join(validation_note) if validation_note else "")
+                all_rows_data.append(row_data)
+
+        # --- pagination support ---
+        if use_pagination:
+            while True:
+                process_current_page()
+                next_button = self.page.locator('[class="trademo-table-arrow-button"]').nth(1)
+                if next_button.is_enabled():
+                    next_button.click()
+                    self.page.locator("table tbody tr td:nth-child(1)").first.wait_for(state="visible", timeout=100000)
+                else:
+                    break
+        else:
+            process_current_page()
+
+        # --- Save to Excel if invalid entries exist ---
+        if self.invalid_entries:
             os.makedirs("results", exist_ok=True)
             workbook = Workbook()
             sheet = workbook.active
-            sheet.title = "Invalid Data"
+            sheet.title = "Manual Validation"
 
-            sheet.append([
-                "Sl. No", "Product Description", "Shipper Name", "Consignee Name",
-                "Consignee Address", "Shipper Standardized Name", "Consignee Standardized Name", "Matching Field"
-            ])
+            sheet.append(table_headers + ["Validation"])
             red_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
 
-            for item in self.invalid_entries:
-                row = sheet.max_row + 1
-                sheet.cell(row=row, column=1, value=item.get("slNo"))
-                sheet.cell(row=row, column=2, value=item.get("product"))
-                sheet.cell(row=row, column=3, value=item.get("Shipper_Name"))
-                sheet.cell(row=row, column=4, value=item.get("Consignee_Name"))
-                sheet.cell(row=row, column=5, value=item.get("Consignee_Address"))
-                sheet.cell(row=row, column=6, value=item.get("Shipper_Standardized_Name"))
-                sheet.cell(row=row, column=7, value=item.get("Consignee_Standardized_Name"))
-                sheet.cell(row=row, column=8, value=item.get("matching_field"))
-
-                # Highlight invalid values in red
-                for col in range(2, 9):
-                    cell = sheet.cell(row=row, column=col)
-                    if cell.value:
-                        cell.fill = red_fill
+            for row_data in all_rows_data:
+                sheet.append(row_data)
+                if row_data and "Invalid" in row_data[-1]:
+                    for col in range(2, len(row_data)):
+                        sheet.cell(row=sheet.max_row, column=col).fill = red_fill
 
             file_path = f"results/Manual_Search_{Extracted_Text}.xlsx"
-            print(f"📁 Invalid data saved to '{file_path}'")
+            workbook.save(file_path)
+            print(f"📁 All rows saved to {file_path} (invalid entries highlighted in red)")
+        else:
+            print("📘 No invalid entries found. Excel not generated.")
+
+        return self.invalid_entries
 
     def Manual_suggest_hs_code(self,hs_code:str):
         expect(self.page.get_by_placeholder(
@@ -981,6 +1346,18 @@ class Search:
         self.page.get_by_role("textbox", name="Type to search in all").click()
         self.page.get_by_role("textbox", name="Type to search in all").fill(hs_code)
         self.page.locator(".tw-bg-primary-purple-500").click()
+        self.page.wait_for_timeout(3000)
+        self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(state="visible", timeout=100000)
+
+    def Manual_suggest_chemical(self, chemical_name: str):
+        expect(self.page.get_by_placeholder(
+            "Type to search in all categories or choose from the category below")).to_be_visible()
+        # Manual suggest search for HS Code
+        self.page.get_by_role("textbox", name="Type to search in all").click()
+        self.page.get_by_role("textbox", name="Type to search in all").fill(chemical_name)
+        self.page.locator(".tw-bg-primary-purple-500").click()
+        self.page.wait_for_timeout(3000)
+        self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(state="visible", timeout=100000)
 
     def Manual_suggest_shipper(self,shipper_name:str):
         expect(self.page.get_by_placeholder(
@@ -989,8 +1366,8 @@ class Search:
         self.page.get_by_role("textbox", name="Type to search in all").click()
         self.page.get_by_role("textbox", name="Type to search in all").fill(shipper_name)
         self.page.locator(".tw-bg-primary-purple-500").click()
-        expect(self.page.locator("table tbody tr")).to_have_count(10, timeout=100000)
         self.page.wait_for_timeout(3000)
+        self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(state="visible", timeout=100000)
 
     def Manual_suggest_consignee(self,consignee_name:str):
         expect(self.page.get_by_placeholder(
@@ -999,7 +1376,7 @@ class Search:
         self.page.get_by_role("textbox", name="Type to search in all").click()
         self.page.get_by_role("textbox", name="Type to search in all").fill(consignee_name)
         self.page.locator(".tw-bg-primary-purple-500").click()
-        expect(self.page.locator("table tbody tr")).to_have_count(10, timeout=100000)
+        self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(state="visible", timeout=100000)
         self.page.wait_for_timeout(3000)
 
     def Manual_suggest_port(self,port_name:str):
@@ -1009,7 +1386,7 @@ class Search:
         self.page.get_by_role("textbox", name="Type to search in all").click()
         self.page.get_by_role("textbox", name="Type to search in all").fill(port_name)
         self.page.locator(".tw-bg-primary-purple-500").click()
-        expect(self.page.locator("table tbody tr")).to_have_count(10, timeout=100000)
+        self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(state="visible", timeout=100000)
         self.page.wait_for_timeout(3000)
 
     def auto_suggest_manual_hs_code(self, hs_code:str):
@@ -1021,6 +1398,7 @@ class Search:
         print(f"Selected HS Code is: {self.selected_hs_code}")
         self.page.locator(".tw-bg-primary-purple-500").click()
         self.page.wait_for_timeout(3000)
+        self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(state="visible", timeout=100000)
 
     def auto_suggest_manual_product(self, product_name: str):
         self.page.get_by_role("textbox", name="Type to search in all").click()
@@ -1041,6 +1419,8 @@ class Search:
         self.page.locator('[class="tw-font-medium tw-bg-transparent tw-p-0"]').nth(0).click()
         expect(self.page.get_by_role("main")).to_contain_text("Shipper")
         self.page.locator(".tw-bg-primary-purple-500").click()
+        self.page.wait_for_timeout(3000)
+        self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(state="visible", timeout=100000)
 
     def auto_suggest_manual_consignee(self,consignee:str):
         self.page.get_by_role("textbox", name="Type to search in all").click()
@@ -1050,6 +1430,8 @@ class Search:
         self.page.locator('[class="tw-font-medium tw-bg-transparent tw-p-0"]').nth(0).click()
         expect(self.page.get_by_role("main")).to_contain_text("Consignee")
         self.page.locator(".tw-bg-primary-purple-500").click()
+        self.page.wait_for_timeout(3000)
+        self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(state="visible", timeout=100000)
 
     def auto_suggest_manual_chemical(self, chemical_name:str):
         self.page.get_by_role("textbox", name="Type to search in all").click()

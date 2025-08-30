@@ -589,7 +589,6 @@ class ConsigneeFilter:
                         self.page.get_by_role("dialog").get_by_text(consignee_page1).click()
                     page1 = page1_info.value
                     self.page.wait_for_timeout(2000)
-                    # expect(page1.get_by_role("main")).to_contain_text(self.Company_name)
                     expect(page1.locator('[class="_portName_9369m_19"]')).to_contain_text(self.Company_name)
                     page1.close()
                     # close popup
@@ -717,7 +716,7 @@ class ConsigneeFilter:
         country_elements = self.page.locator("//div[img[@class='trademo-search-flag mr-2']]")
         count = country_elements.count()
 
-        print(f"🔍 Total countries found: {count}")
+        print(f"🔍 Total countries found: {count-1}")
 
         seen = set()
         duplicates = []
@@ -726,7 +725,7 @@ class ConsigneeFilter:
             name = country_elements.nth(i).inner_text().strip()
 
             if name in seen:
-                print(f"❌ Duplicate found: '{name}' at row {i + 1}")
+                print(f"❌ Duplicate found: '{name}' at row {i}")
                 duplicates.append(name)
             else:
                 seen.add(name)

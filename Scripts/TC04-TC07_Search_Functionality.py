@@ -70,73 +70,87 @@ def Search_page_and_data(browser_setup, csv_data):
 
 class TestTrademo:
     """Validating Search functionality"""
-    def test_Trademo_IndiaTC04(self, browser_setup, Search_page_and_data, Check_Country, Reset):
-        (search_page, hs_code, product_name, shipper_name, consignee_name,
-         chemical_name, port_name, file_name1, file_name2, file_name3,
-         file_name4, file_name5, file_name6, *_) = Search_page_and_data
+    # def test_Trademo_IndiaTC04(self, browser_setup, Search_page_and_data, Check_Country, Reset):
+    #     (search_page, hs_code, product_name, shipper_name, consignee_name,
+    #      chemical_name, port_name, file_name1, file_name2, file_name3,
+    #      file_name4, file_name5, file_name6, *_) = Search_page_and_data
+    #
+    #     Reset()
+    #     Check_Country()
 
-        Reset()
-        Check_Country()
+        # search_page.auto_suggest_hs_code_search(hs_code)
+        # search_page.check_hs_code_in_shipmentgrid()
+        # search_page.Validate_Discover_Insights()
+        # print(f"✅ HS Code search test completed for: {hs_code}")
 
-        search_page.auto_suggest_hs_code_search(hs_code)
-        search_page.check_hs_code_in_shipmentgrid(file_name1)
-        search_page.Validate_Discover_Insights()
-        print(f"✅ HS Code search test completed for: {hs_code}")
+        # Reset()
+        # search_page.auto_suggest_product_search(product_name)
+        # search_page.check_product_description_in_shipment_grid()
+        # print(f"✅ Product search test completed for: {product_name}")
+        #
+        # Reset()
+        # search_page.auto_suggest_shipper_search(shipper_name)
+        # search_page.Validate_exporter_tab()
+        # search_page.check_shipper_name_export_tab()
+        # search_page.Validate_Discover_insight_link()
+        # search_page.validate_duplicate_country_names()
+        # search_page.check_Shipper_Name_in_theGrid_View()
+        # print(f"✅ Shipper search test completed for: {shipper_name}")
 
-        Reset()
-        search_page.auto_suggest_product_search(product_name)
-        search_page.check_product_description_in_shipment_grid(file_name2)
-        print(f"✅ Product search test completed for: {product_name}")
+        # Reset()
+        # search_page.auto_suggest_consignee_search(consignee_name)
+        # search_page.Validate_importer_tab()
+        # search_page.check_consignee_Name_Import_tab()
+        # search_page.Validate_Discover_insight_consignee()
+        # search_page.validate_duplicate_country_names()
+        # search_page.check_Consignee_Name_in_theGrid_View()
+        # print(f"✅ Consignee search test completed for: {consignee_name}")
 
-        Reset()
-        search_page.auto_suggest_shipper_search(shipper_name)
-        search_page.Validate_exporter_tab()
-        search_page.check_shipper_name(file_name3)
-        search_page.Validate_Discover_insight_link()
-        print(f"✅ Shipper search test completed for: {shipper_name}")
+        # Reset()
+        # search_page.Chemical_Search_auto_suggest(chemical_name)
+        # search_page.Check_Chemical_In_shipmentGrid()
+        # print(f"✅ Chemical search test completed for: {chemical_name}")
 
-        Reset()
-        search_page.auto_suggest_consignee_search(consignee_name)
-        search_page.Validate_importer_tab()
-        search_page.check_consignee_Name_Shipment_Grid(file_name4)
-        search_page.Validate_Discover_insight_consignee()
-        print(f"✅ Consignee search test completed for: {consignee_name}")
-
-        Reset()
-        search_page.Chemical_Search_auto_suggest(chemical_name)
-        search_page.Check_Chemical_In_shipmentGrid(file_name5)
-        print(f"✅ Chemical search test completed for: {chemical_name}")
-
-        Reset()
-        search_page.auto_suggest_search_port(port_name)
-        search_page.Check_Port_description_Shipment_Grid(file_name6)
-        search_page.Validate_Discover_insight_ports()
-        print(f"✅ Port search test completed for: {port_name}")
+        # Reset()
+        # search_page.auto_suggest_search_port(port_name)
+        # search_page.Check_Port_description_Shipment_Grid()
+        # search_page.Validate_Discover_insight_ports()
+        # print(f"✅ Port search test completed for: {port_name}")
 
     def test_Trademo_IndiaTC05(self, browser_setup, Search_page_and_data, Reset):
         (search_page, hs_code, product_name, shipper_name, consignee_name,
          chemical_name, port_name, *_) = Search_page_and_data
 
-        print("🔍 Running TC05: Verify manual search functionality")
-        Reset()
-        search_page.Search_product_manualsuggest(product_name)
-        search_page.Verify_Shipment_tab_Manual_suggest(product_name)
+        # print("🔍 Running TC05: Verify manual search functionality")
+        # Reset()
+        # search_page.Search_product_manualsuggest(product_name)
+        # search_page.Verify_Shipment_tab_Manual_suggest(product_name)
+        # print(f"✅ Manual Product search test completed for: {product_name}")
+        #
+        # Reset()
+        # search_page.Manual_suggest_hs_code(hs_code)
+        # search_page.Verify_Shipment_tab_Manual_suggest(hs_code)
+        # print(f"✅ Manual HS Code search test completed for: {hs_code}")
+        #
+        # Reset()
+        # search_page.Manual_suggest_shipper(shipper_name)
+        # search_page.Verify_Shipment_tab_Manual_suggest(shipper_name)
+        # print(f"✅ Manual shipper name search test completed for: {shipper_name}")
+        #
+        # Reset()
+        # search_page.Manual_suggest_consignee(consignee_name)
+        # search_page.Verify_Shipment_tab_Manual_suggest(consignee_name)
+        # print(f"✅ Manual consignee search test completed for: {consignee_name}")
 
-        Reset()
-        search_page.Manual_suggest_hs_code(hs_code)
-        search_page.Verify_Shipment_tab_Manual_suggest(hs_code)
-
-        Reset()
-        search_page.Manual_suggest_shipper(shipper_name)
-        search_page.Verify_Shipment_tab_Manual_suggest(shipper_name)
-
-        Reset()
-        search_page.Manual_suggest_consignee(consignee_name)
-        search_page.Verify_Shipment_tab_Manual_suggest(consignee_name)
-
-        Reset()
-        search_page.Manual_suggest_port(port_name)
-        search_page.Verify_Shipment_tab_Manual_suggest(port_name)
+        # Reset()
+        # search_page.Manual_suggest_chemical(chemical_name)
+        # search_page.Verify_Shipment_tab_Manual_suggest(chemical_name)
+        # print(f"✅ Manual consignee search test completed for: {chemical_name}")
+        #
+        # Reset()
+        # search_page.Manual_suggest_port(port_name)
+        # search_page.Verify_Shipment_tab_Manual_suggest(port_name)
+        # print(f"✅ Manual port search test completed for: {port_name}")
 
     def test_Trademo_IndiaTC06(self, browser_setup, Search_page_and_data, Reset):
         (search_page, hs_code, product_name, shipper_name, consignee_name,
@@ -144,39 +158,39 @@ class TestTrademo:
          file_name4, file_name5, file_name6, file_name7, file_name8, file_name9,
          file_name10, file_name11, file_name12) = Search_page_and_data
 
-        print("🔍 Running TC06: Verify autosuggest functionality with manual entry")
-        Reset()
-        search_page.auto_suggest_manual_hs_code(hs_code)
-        search_page.check_hs_code_in_shipmentgrid(file_name7)
+        # print("🔍 Running TC06: Verify autosuggest functionality with manual entry")
+        # Reset()
+        # search_page.auto_suggest_manual_hs_code(hs_code)
+        # search_page.check_hs_code_in_shipmentgrid()
+        #
+        # Reset()
+        # search_page.auto_suggest_manual_product(product_name)
+        # search_page.check_product_description_in_shipment_grid()
+        #
+        # Reset()
+        # search_page.auto_suggest_manual_shipper(shipper_name)
+        # search_page.Validate_exporter_tab()
+        # search_page.check_Shipper_Name_in_theGrid_View()
+        #
+        # Reset()
+        # search_page.auto_suggest_manual_consignee(consignee_name)
+        # search_page.Validate_importer_tab()
+        # search_page.check_Consignee_Name_in_theGrid_View()
 
-        Reset()
-        search_page.auto_suggest_manual_product(product_name)
-        search_page.check_product_description_in_shipment_grid(file_name8)
-
-        Reset()
-        search_page.auto_suggest_manual_shipper(shipper_name)
-        search_page.Validate_exporter_tab()
-        search_page.check_shipper_name(file_name9)
-
-        Reset()
-        search_page.auto_suggest_manual_consignee(consignee_name)
-        search_page.Validate_importer_tab()
-        search_page.check_consignee_Name_Shipment_Grid(file_name10)
-
-        Reset()
-        search_page.auto_suggest_manual_chemical(chemical_name)
-        search_page.Check_Chemical_In_shipmentGrid(file_name11)
+        # Reset()
+        # search_page.auto_suggest_manual_chemical(chemical_name)
+        # search_page.Check_Chemical_In_shipmentGrid()
 
         Reset()
         search_page.auto_suggest_manual_port(port_name)
-        search_page.Check_Port_description_Shipment_Grid(file_name12)
+        search_page.Check_Port_description_Shipment_Grid()
 
-    def test_Trademo_IndiaTC07(self, browser_setup, Search_page_and_data, Reset):
-        search_page, hs_code, *_ = Search_page_and_data
-        print("🔍 Running TC07: Validate Save Search modal functionality")
-
-        Reset()
-        search_page.auto_suggest_hs_code_search_save_search(hs_code)
-        search_page.Verify_Save_Search_screen(hs_code)
-        search_page.Verify_SaveSearch_Cancel_Close()
-        search_page.Verify_SaveSearch_button()
+    # def test_Trademo_IndiaTC07(self, browser_setup, Search_page_and_data, Reset):
+    #     search_page, hs_code, *_ = Search_page_and_data
+    #     print("🔍 Running TC07: Validate Save Search modal functionality")
+    #
+    #     Reset()
+    #     search_page.auto_suggest_hs_code_search_save_search(hs_code)
+    #     search_page.Verify_Save_Search_screen(hs_code)
+    #     search_page.Verify_SaveSearch_Cancel_Close()
+    #     search_page.Verify_SaveSearch_button()

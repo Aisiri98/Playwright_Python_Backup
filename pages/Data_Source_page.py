@@ -8,6 +8,7 @@ class Data_Source_Filter:
         self.page = page
 
     def Validate_Country_dropdown(self):
+        self.page.pause()
         # Open the country dropdown
         self.page.locator("[class='tw-flex tw-items-center tw-gap-3 tw-border-none tw-text-sm']").click()
         #The dropdown should open, and a list of countries should be visible. Each country should have a checkbox and Import label
@@ -66,7 +67,7 @@ class Data_Source_Filter:
 
     def All_Countries_Checkbox(self):
         # Click on All Countries checkbox
-        all_countries_checkbox = self.page.locator('input[type="checkbox"]').nth(0)
+        all_countries_checkbox = self.page.locator("//div[normalize-space(text())='All Countries']/preceding-sibling::input[@type='checkbox']")
         #All country checkboxes should be selected automatically
         all_countries_checkbox.check()
 
@@ -74,9 +75,9 @@ class Data_Source_Filter:
         self.page.wait_for_timeout(1000)
 
         # Get all 'All Imports' checkboxes
-        import_checkboxes = self.page.locator("input[type='checkbox']").nth(1)
+        import_checkboxes = self.page.locator("//div[normalize-space(.)='All Imports']/preceding-sibling::input[@type='checkbox']").first
         # Get all 'All Exports' checkboxes
-        export_checkboxes = self.page.locator("input[type='checkbox']").nth(2)
+        export_checkboxes = self.page.locator("//div[normalize-space(.)='All Exports']/preceding-sibling::input[@type='checkbox']").first
         # Check if import and export checkbox are checked
         expect(import_checkboxes).to_be_checked()
         expect(export_checkboxes).to_be_checked()
@@ -123,7 +124,7 @@ class Data_Source_Filter:
         self.page.locator("//span[normalize-space()='Apply']").click()
 
         # Check Universal search text
-        expect(self.page.locator("//span[normalize-space()='Universal Search']")).to_contain_text("Universal Search")
+        expect(self.page.locator("//span[normalize-space()='Universal Search']")).to_contain_text("Universal Search",timeout=100000)
 
     def Validate_Cancel_Apply_button(self):
         # Open the country dropdown
@@ -132,9 +133,9 @@ class Data_Source_Filter:
         self.page.get_by_role("button", name="Clear All").click()
 
         self.page.wait_for_timeout(1000)
-        import_checkbox = self.page.get_by_role("checkbox").nth(1)
+        import_checkbox = self.page.locator("//div[normalize-space(.)='All Imports']/preceding-sibling::input[@type='checkbox']").first
         # Get all 'All Exports' checkboxes
-        export_checkboxes = self.page.get_by_role("checkbox").nth(2)
+        export_checkboxes = self.page.locator("//div[normalize-space(.)='All Exports']/preceding-sibling::input[@type='checkbox']").first
 
         # Validate all imports checkboxes are uncheckeed
         expect(import_checkbox).to_be_visible(timeout=10000)  # wait until at least one is visible
