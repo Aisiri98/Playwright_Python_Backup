@@ -9,14 +9,18 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 
-# ---------- CSV LOADER ----------
 def load_CSV_data(file_path='./test_data/login.csv'):
-    """Load email, password & country from CSV."""
+    """Load email, password, country, and source_type from CSV."""
     with open(file_path, mode='r', encoding='utf-8-sig') as file:
         reader = csv.DictReader(file)
         first_row = next(reader)
         print("Loaded row:", first_row)
-        return first_row['email'], first_row['password'], first_row['country']
+        return (
+            first_row['email'],
+            first_row['password'],
+            first_row['country'],
+            first_row['source_type']
+        )
 
 
 # ---------- BROWSER FIXTURE ----------
@@ -31,7 +35,7 @@ def browser_setup(request):
     page = context.new_page()
 
     # login steps...
-    email, password, country = load_CSV_data()
+    email, password, country, source_type= load_CSV_data()
     page.goto("https://accounts.trademo.com/", wait_until="load")
     page.get_by_placeholder("Enter registered email address").fill(email)
     page.get_by_placeholder("Enter your password").fill(password)
@@ -63,18 +67,16 @@ def browser_setup(request):
             os.remove(video_path)
 
 
-
-
 # ---------- COUNTRY SELECTION FIXTURE ----------
 @pytest.fixture(scope="class")
-def Check_Country(browser_setup: Page):
-    """Fixture that returns a function to ensure the given country from CSV is selected in the Data Source filter."""
-
+def Check_Country(browser_setup: Page, request):
     page = browser_setup
+    csv_rows = request.cls.csv_rows  # ✅ Access rows from login fixture
 
-    def _check_country():
-        _, _, country = load_CSV_data()   # ✅ get country from CSV
-        source_type = "Imports"           # default (can extend later if needed)
+    def _check_country(index=0):
+        row = csv_rows[index]
+        country = row["country"]
+        source_type = row["source_type"]
 
         page.wait_for_selector(".tw-text-nowrap > span", timeout=10000)
         text_content = page.locator(".tw-text-nowrap > span").text_content()
@@ -91,16 +93,16 @@ def Check_Country(browser_setup: Page):
             rows = page.locator('[class="tw-flex tw-items-center tw-w-full"]')
             for i in range(rows.count()):
                 row_text = rows.nth(i).inner_text().strip()
-                if country in row_text:
+                if country in row_text or source_type in row_text:
                     rows.nth(i).locator('input[type="checkbox"]').first.click()
-                    break
 
             page.locator("//span[normalize-space()='Apply']").click()
             print(f"✅ {expected_text} is selected in filter")
         else:
             print(f"ℹ️ {expected_text} is already selected in filter. No action needed.")
 
-    return _check_country   # 👈 VERY IMPORTANT
+    return _check_country
+
 
 @pytest.fixture
 def Reset(browser_setup: Page):
@@ -109,8 +111,9 @@ def Reset(browser_setup: Page):
     page = browser_setup
 
     def _reset():
-        reset_locator = page.get_by_text(" Reset").first
-        if reset_locator.is_visible():
+        reset_locator = page.get_by_text("Reset").first
+        page.wait_for_timeout(5000)
+        if reset_locator.is_visible(timeout=40000):
             print("🔍 'Reset' is visible, clicking...")
             reset_locator.click()
             expect(page.get_by_placeholder("Type to search in all categories or choose from the category below")).to_be_visible()

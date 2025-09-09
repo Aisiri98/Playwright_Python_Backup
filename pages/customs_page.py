@@ -244,7 +244,7 @@ class CustomsFilter:
             table_headers.append(header_text)
             if header_text.lower() in ["s no", "sl no", "serial no"]:
                 self.S_No = i
-            elif header_text.lower() in ["country of import", "consignee of import"]:
+            elif header_text.lower() == "custom house agent name":
                 self.C_H_field = i
 
         # --- Handle missing "Country of Import" column ---

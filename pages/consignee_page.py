@@ -731,7 +731,7 @@ class ConsigneeFilter:
                 seen.add(name)
 
         if not duplicates:
-            print("✅ No duplicate company names found!")
+            print("✅ No duplicate country names found!")
         else:
             print(f"⚠️ Total Duplicates Found: {len(duplicates)} -> {duplicates}")
 

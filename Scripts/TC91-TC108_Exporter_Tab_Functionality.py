@@ -186,6 +186,68 @@ class TestTrademo:
         export_page.Download_option()
         export_page.Validate_Colmn_Shown_In_the_Grid_Download_Trends_2nd_level()
 
+    def test_Trademo_IndiaTC105(self, browser_setup, Reset, Check_Country):
+        page = browser_setup
+        export_page = ExportTab(page)
+        Check_Country()
+        print(
+            "🔍 Running TC105: Verify Analyse By filter functionality (Shipments, Value (USD))→ Trends tab. in  Exporters")
+        Reset()
+        export_page.exporter_tab()
+        export_page.verify_trend_headers()
+        export_page.Analyse_By_Shipment()
+        export_page.Analyse_By_Shipment_Value_USD()
+        export_page.Filter_by_Shipment_Trends()
+        export_page.Filter_by_Shipment_Value_Trends()
+
+    def test_Trademo_IndiaTC106(self, browser_setup, Reset, Check_Country):
+        page = browser_setup
+        export_page = ExportTab(page)
+        Check_Country()
+        print(
+            "🔍 Running TC106: Verify that selecting a checkbox in  Exporters→ Trends enables the options (Download, Export to CRM, Bookmark, More Download Options, Fetch Contacts, and Apply Filter) ")
+        Reset()
+        export_page.exporter_tab()
+        export_page.verify_trend_headers()
+        export_page.Validate_option_on_selecting_deselect_checkbox()
+
+    def test_Trademo_IndiaTC107(self, browser_setup, Reset, Check_Country):
+        page = browser_setup
+        export_page = ExportTab(page)
+        Check_Country()
+        print(
+            "🔍 Running TC107: Verify that the functionality of all options (Download, Export to CRM, Bookmark, More Download Options, merge Fetch Contacts, and Apply Filter) works correctly after selecting multiple companies in the  Exporters→ Trends tab")
+        Reset()
+        export_page.exporter_tab()
+        export_page.verify_trend_headers()
+        export_page.Validate_Merge_option()
+        export_page.Validate_Export_CRM()
+        export_page.Close_modal()
+        export_page.Fetch_contacts()
+        export_page.Bookmark()
+        export_page.Download_option_Trendtab()
+        export_page.Validate_Colmn_Shown_In_the_Grid_Download_Trends()
+
+    def test_Trademo_IndiaTC108(self, browser_setup, Reset, Check_Country):
+        page = browser_setup
+        export_page = ExportTab(page)
+        Check_Country()
+        print(
+            "🔍 Running TC108: Verify that the functionality of all options (Download, Export to CRM, Bookmark, More Download Options, merge Fetch Contacts, and Apply Filter) works correctly after selecting multiple companies in the  Exporters→ Trends tab")
+        Reset()
+        export_page.exporter_tab()
+        export_page.verify_rank_table_headers()
+        export_page.validate_data_after_applying_filter()
+        Reset()
+        export_page.Validate_Tab_count_after_Manual_search()
+
+
+
+
+
+
+
+
 
 
 

@@ -1341,6 +1341,619 @@ class ExportTab:
         # --- Cleanup ---
         os.remove(file_path)
 
+    def Filter_by_Shipment_Trends(self):
+        # Disable second level hierarchy
+        global less_than, value_num, shipmentvalue_num, greater_than, from_value, to_value
+        # click on filter by
+        self.page.pause()
+        self.page.wait_for_timeout(3000)
+        self.page.locator('#custom-switch-2').first.wait_for(state="visible", timeout=10000)
+        self.page.locator('#custom-switch-2').first.click(force=True, timeout=100000)
+        self.page.wait_for_timeout(2000)
+        # click on filter by
+        dropdowns = self.page.locator("div.css-1rupv9a-singleValue")
+        dropdown_count = dropdowns.count()
+
+        for i in range(dropdown_count):
+            dropdown = dropdowns.nth(i)
+
+            # Open dropdown
+            dropdown.click()
+            self.page.wait_for_timeout(500)  # small wait for menu to appear
+
+            # Check if "Shipment Value USD" is visible in options
+            option = self.page.get_by_text("Shipments", exact=True).nth(1)
+
+            if option.is_visible(timeout=1000):
+                option.click()
+                print(f"'Shipment Value USD' selected in dropdown {i + 1}")
+            else:
+                print(f"'Shipment Value USD' not found in dropdown {i + 1}, moving on...")
+                # Close dropdown by pressing ESC (so next one can open cleanly)
+                self.page.keyboard.press("Escape")
+        self.page.get_by_role("button", name="tune Filter By").click()
+        expect(self.page.get_by_text("Filter By Range")).to_be_visible(timeout=100000)
+        expect(self.page.locator("#onClickClear").get_by_text("Shipments")).to_be_visible()
+        expect(self.page.get_by_text("Value", exact=True)).to_be_visible()
+        self.page.wait_for_timeout(1000)
+        # store shipment value usd in variable
+        headers = self.page.locator("table thead tr th")
+        expect(headers.first).to_be_visible(timeout=100000)
+        header_count = headers.count()
+
+        shipment_value_index = None
+
+        for i in range(header_count):
+            header_text = headers.nth(i).inner_text().strip().lower()
+            print(f"{header_text}")
+            if "total shipments" in header_text:
+                shipment_value_index = i
+                break
+
+        if shipment_value_index is None:
+            raise Exception("❌ 'Shipment' column not found in table headers")
+
+        print(f"✅ Found 'Shipment' column at index {shipment_value_index}")
+
+        # --- Extract all shipment values from table ---
+        rows = self.page.locator("table tbody tr")
+        row_count = rows.count()
+
+        shipment_values = []
+        for i in range(row_count):
+            value_text = rows.nth(i).locator("td").nth(shipment_value_index).inner_text().strip()
+            print(f"Shipment value is: {value_text}")
+
+            # Convert to float (remove commas & $ if present)
+            shipmentvalue_num = float(value_text.replace(",", "").replace("$", ""))
+
+            # Subtract 1 for checking
+            less_than = shipmentvalue_num - 1
+            print(f"less than value: {less_than}")
+
+            greater_than = shipmentvalue_num + 1
+            print(f"greater than:{greater_than}")
+
+            from_value = shipmentvalue_num - 1
+            print(f"less than value: {less_than}")
+
+            to_value = shipmentvalue_num + 1
+            print(f"greater than:{greater_than}")
+
+        # Under Shipment Value (USD)/Value, select Less Than, and enter a value less than the actual shipments shown (e.g., Enter 200,000 if the company has 150,000)
+        self.page.get_by_placeholder("Enter count of Shipment").click()
+        self.page.get_by_placeholder("Enter count of Shipment").fill(str(less_than))
+        self.page.get_by_role("button", name="Apply").click()
+        expect(self.page.get_by_text("No Shipments Found. Please try another search")).to_be_visible(timeout=100000)
+        self.page.get_by_role("button", name="Clear").click()
+        # Under Shipment Value (USD)/Value, select Less Than, and enter a value greater than the actual shipments shown (e.g., Enter 200,000 if the company has 150,000)
+        self.page.get_by_placeholder("Enter count of Shipment").click()
+        self.page.get_by_placeholder("Enter count of Shipment").fill(str(shipmentvalue_num))
+        self.page.get_by_role("button", name="Apply").click()
+
+        for i in range(row_count):
+            value_text1 = rows.nth(i).locator("td").nth(shipment_value_index).inner_text().strip()
+            print(f"Shipment value is: {value_text1}")
+
+            # Convert to float (remove commas & $ if present)
+            shipmentvalue_num1 = float(value_text1.replace(",", "").replace("$", ""))
+            if shipmentvalue_num <= shipmentvalue_num1:
+                print(f"✅ Value {shipmentvalue_num1} is less than {shipmentvalue_num} (row {i + 1})")
+            else:
+                print(f"❌ Value {shipmentvalue_num1} is NOT less than {shipmentvalue_num} (row {i + 1})")
+                assert False, f"Value {shipmentvalue_num1} exceeded limit {shipmentvalue_num}"
+
+        # Click Clear to reset the modal, then select Shipment Value (USD)/Value – Between, enter a range that includes the company’s shipment/Value count, and click Apply
+        self.page.get_by_role("button", name="Clear").click()
+        self.page.get_by_role("tab", name="between").click()
+        self.page.get_by_placeholder("From", exact=True).click()
+        self.page.get_by_placeholder("From", exact=True).fill(str(from_value))
+        self.page.get_by_placeholder("Upto").click()
+        self.page.get_by_placeholder("Upto").fill(str(to_value))
+        self.page.get_by_role("button", name="Apply").click()
+
+        for i in range(row_count):
+            value_text1 = rows.nth(i).locator("td").nth(shipment_value_index).inner_text().strip()
+            print(f"Shipment value is: {value_text1}")
+
+            # Convert to float (remove commas & $ if present)
+            shipmentvalue_num2 = float(value_text1.replace(",", "").replace("$", ""))
+            if from_value <= shipmentvalue_num2 <= to_value:
+                print(f"✅ Row {i + 1}: Value {shipmentvalue_num2} is within range [{from_value}, {to_value}]")
+            else:
+                print(f"❌ Row {i + 1}: Value {shipmentvalue_num2} is NOT in range [{from_value}, {to_value}]")
+                assert False, f"Value {shipmentvalue_num2} at row {i + 1} not in range [{from_value}, {to_value}]"
+        # Without clearing, modify range to one that excludes the company’s Shipment Value (USD)/Value count, then click Apply
+        self.page.get_by_role("tab", name="between").click()
+        self.page.get_by_placeholder("From", exact=True).click()
+        self.page.get_by_placeholder("From", exact=True).fill("1")
+        self.page.get_by_placeholder("Upto").click()
+        self.page.get_by_placeholder("Upto").fill("2")
+        self.page.get_by_role("button", name="Apply").click()
+        expect(self.page.get_by_text("No Shipments Found. Please try another search")).to_be_visible(timeout=100000)
+        # Click Clear, select Shipment Value (USD)/Value – Greater Than, enter a value below the actual count, and click Apply
+        self.page.get_by_role("button", name="Clear").click()
+        self.page.get_by_role("tab", name="greater than").click()
+        self.page.get_by_placeholder("Enter count of Shipment").click()
+        self.page.get_by_placeholder("Enter count of Shipment").fill(str(less_than))
+        self.page.get_by_role("button", name="Apply").click()
+        for i in range(row_count):
+            value_text1 = rows.nth(i).locator("td").nth(shipment_value_index).inner_text().strip()
+            print(f"Shipment value is: {value_text1}")
+            # Convert to float (remove commas & $ if present)
+            shipmentvalue_num1 = float(value_text1.replace(",", "").replace("$", ""))
+            if shipmentvalue_num1 > less_than:
+                print(f"✅ Value {shipmentvalue_num1} is greater than {less_than} (row {i + 1})")
+            else:
+                print(f"❌ Value {shipmentvalue_num1} is NOT greater than {less_than} (row {i + 1})")
+                assert False, f"Value {shipmentvalue_num1} exceeded limit {less_than}"
+        # Without clearing, change the value to one greater than the company’s count and click Apply
+        self.page.get_by_role("tab", name="greater than").click()
+        self.page.get_by_placeholder("Enter count of Shipment").click()
+        self.page.get_by_placeholder("Enter count of Shipment").fill(str(greater_than))
+        self.page.get_by_role("button", name="Apply").click()
+        expect(self.page.get_by_text("No Shipments Found. Please try another search")).to_be_visible(timeout=100000)
+        # Clear filter
+        self.page.get_by_role("button", name="Clear").click()
+
+    def Filter_by_Shipment_Value_Trends(self):
+        # Disable second level hierarchy
+        self.page.pause()
+        global less_than, value_num, shipmentvalue_num, greater_than, from_value, to_value
+        dropdowns = self.page.locator("div.css-1rupv9a-singleValue")
+        dropdown_count = dropdowns.count()
+
+        for i in range(dropdown_count):
+            dropdown = dropdowns.nth(i)
+
+            # Open dropdown
+            dropdown.click()
+            self.page.wait_for_timeout(500)  # small wait for menu to appear
+
+            # Check if "Shipment Value USD" is visible in options
+            option = self.page.get_by_text("Value (USD)", exact=True)
+
+            if option.is_visible(timeout=1000):
+                option.click()
+                print(f"'Shipment Value USD' selected in dropdown {i + 1}")
+            else:
+                print(f"'Shipment Value USD' not found in dropdown {i + 1}, moving on...")
+                # Close dropdown by pressing ESC (so next one can open cleanly)
+                self.page.keyboard.press("Escape")
+
+        # store shipment value usd in variable
+        headers = self.page.locator("table thead tr th")
+        expect(headers.first).to_be_visible(timeout=100000)
+        header_count = headers.count()
+
+        shipment_value_index = None
+
+        for i in range(header_count):
+            header_text = headers.nth(i).inner_text().strip().lower()
+            print(f"{header_text}")
+            if "total shipment value(usd)" in header_text:
+                shipment_value_index = i
+                break
+
+        if shipment_value_index is None:
+            raise Exception("❌ 'Shipment Value' column not found in table headers")
+
+        print(f"✅ Found 'Shipment Value(USD)' column at index {shipment_value_index}")
+
+        # --- Extract all shipment values from table ---
+        rows = self.page.locator("table tbody tr")
+        row_count = rows.count()
+
+        shipment_values = []
+        for i in range(row_count):
+            value_text = rows.nth(i).locator("td").nth(shipment_value_index).inner_text().strip()
+            print(f"Shipment value usd is: {value_text}")
+
+            # Convert to float (remove commas & $ if present)
+            shipmentvalue_num = float(value_text.replace(",", "").replace("$", ""))
+
+            # Subtract 1 for checking
+            less_than = shipmentvalue_num - 1
+            print(f"less than value: {less_than}")
+
+            greater_than = shipmentvalue_num + 1
+            print(f"greater than:{greater_than}")
+
+            from_value = shipmentvalue_num - 1
+            print(f"less than value: {less_than}")
+
+            to_value = shipmentvalue_num + 1
+            print(f"greater than:{greater_than}")
+
+        # Under Shipment Value (USD)/Value, select Less Than, and enter a value less than the actual shipments shown (e.g., Enter 200,000 if the company has 150,000)
+        self.page.get_by_role("button", name="tune Filter By").click()
+        expect(self.page.get_by_text("Filter By Range")).to_be_visible(timeout=100000)
+        self.page.locator("div").filter(has_text=re.compile(r"^Valueless thanbetweengreater than$")).get_by_role(
+            "img").click()
+        self.page.get_by_placeholder("Enter count of Value").click()
+        self.page.get_by_placeholder("Enter count of Value").fill(str(less_than))
+        self.page.get_by_role("button", name="Apply").click()
+        expect(self.page.get_by_text("No Shipments Found. Please try another search")).to_be_visible(timeout=100000)
+        self.page.get_by_role("button", name="Clear").click()
+        # Under Shipment Value (USD)/Value, select Less Than, and enter a value greater than the actual shipments shown (e.g., Enter 200,000 if the company has 150,000)
+        self.page.get_by_placeholder("Enter count of Value").click()
+        self.page.get_by_placeholder("Enter count of Value").fill(str(shipmentvalue_num))
+        self.page.get_by_role("button", name="Apply").click()
+
+        for i in range(row_count):
+            value_text1 = rows.nth(i).locator("td").nth(shipment_value_index).inner_text().strip()
+            print(f"Shipment value usd is: {value_text1}")
+
+            # Convert to float (remove commas & $ if present)
+            shipmentvalue_num1 = float(value_text1.replace(",", "").replace("$", ""))
+            if shipmentvalue_num1 <= shipmentvalue_num:
+                print(f"✅ Value {shipmentvalue_num1} is less than {shipmentvalue_num} (row {i + 1})")
+            else:
+                print(f"❌ Value {shipmentvalue_num1} is NOT less than {shipmentvalue_num} (row {i + 1})")
+                assert False, f"Value {shipmentvalue_num1} exceeded limit {shipmentvalue_num}"
+
+        # Click Clear to reset the modal, then select Shipment Value (USD)/Value – Between, enter a range that includes the company’s shipment/Value count, and click Apply
+        self.page.get_by_role("button", name="Clear").click()
+        self.page.get_by_role("tab", name="between").click()
+        self.page.get_by_placeholder("From", exact=True).click()
+        self.page.get_by_placeholder("From", exact=True).fill(str(from_value))
+        self.page.get_by_placeholder("Upto").click()
+        self.page.get_by_placeholder("Upto").fill(str(to_value))
+        self.page.get_by_role("button", name="Apply").click()
+
+        for i in range(row_count):
+            value_text1 = rows.nth(i).locator("td").nth(shipment_value_index).inner_text().strip()
+            print(f"Shipment value usd is: {value_text1}")
+
+            # Convert to float (remove commas & $ if present)
+            shipmentvalue_num2 = float(value_text1.replace(",", "").replace("$", ""))
+            if from_value <= shipmentvalue_num2 <= to_value:
+                print(f"✅ Row {i + 1}: Value {shipmentvalue_num2} is within range [{from_value}, {to_value}]")
+            else:
+                print(f"❌ Row {i + 1}: Value {shipmentvalue_num2} is NOT in range [{from_value}, {to_value}]")
+                assert False, f"Value {shipmentvalue_num2} at row {i + 1} not in range [{from_value}, {to_value}]"
+        # Without clearing, modify range to one that excludes the company’s Shipment Value (USD)/Value count, then click Apply
+        self.page.get_by_role("tab", name="between").click()
+        self.page.get_by_placeholder("From", exact=True).click()
+        self.page.get_by_placeholder("From", exact=True).clear()
+        self.page.get_by_placeholder("From", exact=True).fill("1")
+        self.page.get_by_placeholder("Upto").click()
+        self.page.get_by_placeholder("Upto", exact=True).clear()
+        self.page.get_by_placeholder("Upto").fill("2")
+        self.page.get_by_role("button", name="Apply").click()
+        expect(self.page.get_by_text("No Shipments Found. Please try another search")).to_be_visible(timeout=100000)
+        # Click Clear, select Shipment Value (USD)/Value – Greater Than, enter a value below the actual count, and click Appl
+        self.page.get_by_role("button", name="Clear").click()
+        self.page.get_by_role("tab", name="greater than").click()
+        self.page.get_by_placeholder("Enter count of Value").click()
+        self.page.get_by_placeholder("Enter count of Value").fill(str(less_than))
+        self.page.get_by_role("button", name="Apply").click()
+        for i in range(row_count):
+            value_text1 = rows.nth(i).locator("td").nth(shipment_value_index).inner_text().strip()
+            print(f"Shipment value usd is: {value_text1}")
+            # Convert to float (remove commas & $ if present)
+            shipmentvalue_num1 = float(value_text1.replace(",", "").replace("$", ""))
+            if shipmentvalue_num1 > less_than:
+                print(f"✅ Value {shipmentvalue_num1} is greater than {less_than} (row {i + 1})")
+            else:
+                print(f"❌ Value {shipmentvalue_num1} is NOT greater than {less_than} (row {i + 1})")
+                assert False, f"Value {shipmentvalue_num1} exceeded limit {less_than}"
+        # Without clearing, change the value to one greater than the company’s count and click Apply
+        self.page.get_by_role("tab", name="greater than").click()
+        self.page.get_by_placeholder("Enter count of Value").click()
+        self.page.get_by_placeholder("Enter count of Value").fill(str(greater_than))
+        self.page.get_by_role("button", name="Apply").click()
+        expect(self.page.get_by_text("No Shipments Found. Please try another search")).to_be_visible(timeout=100000)
+        # Clear filter
+        self.page.get_by_role("button", name="Clear").click()
+
+    def Download_option_Trendtab(self):
+        # uncheck the 2nd row checkbox
+        self.page.locator("table tbody tr td:nth-child(1)").nth(1).click()
+        # verify_second_Level_Hierarchy_headers
+        expected_headers = [
+            "S No",
+            "Company",
+            "Total Shipments",
+            "% Overall Change",
+        ]
+
+        for header in expected_headers:
+            locator = self.page.get_by_role("columnheader", name=header).first
+            expect(locator).to_be_visible()
+            print(f"✅ Found header in the Rank: {header}")
+        self.page.get_by_role("button", name="cloud_download Download").click()
+        if self.page.get_by_text("Download Unique Importer").is_visible():
+            expect(self.page.get_by_text("Download Unique Importer")).to_be_visible()
+            self.page.locator("//input[@placeholder='To']").clear()
+            self.page.locator("//input[@placeholder='To']").fill("1")
+            expect(self.page.locator("//span[@class='header-confirm']")).to_contain_text("Confirmation")
+        else:
+            print("⚠️ 'Download Unique Importer' not found on page")
+            expect(self.page.locator("//span[@class='header-confirm']")).to_contain_text("Confirmation")
+
+    def Validate_Colmn_Shown_In_the_Grid_Download_Trends(self):
+        import os
+        import tempfile
+        import openpyxl
+        from datetime import datetime
+
+        # --- Trigger download ---
+        with self.page.expect_download() as download_info:
+            self.page.locator("//button[normalize-space()='Confirm']").click()
+        download = download_info.value
+
+        # --- Save to temp file ---
+        temp_dir = tempfile.mkdtemp()
+        file_path = os.path.join(temp_dir, download.suggested_filename)
+        download.save_as(file_path)
+        print(f"📂 Downloaded to: {file_path}")
+
+        # --- Read workbook ---
+        wb = openpyxl.load_workbook(file_path, data_only=True)
+
+        # --- Validate "Report Summary" sheet ---
+        if "Report Summary" not in wb.sheetnames:
+            wb.close()
+            raise ValueError("❌ 'Report Summary' sheet not found in downloaded Excel.")
+        summary_sheet = wb["Report Summary"]
+
+        EXPECTED_REPORT_TYPE = "Exporters List"
+        EXPECTED_REPORT_TAB = "Trends"
+        EXPECTED_DOWNLOAD_DATE = datetime.today().strftime("%b %d, %Y")
+
+        report_type_value = str(summary_sheet["B7"].value).strip() if summary_sheet["B7"].value else ""
+        importer_tab_value = str(summary_sheet["C7"].value).strip() if summary_sheet["C7"].value else ""
+        download_date_value = str(summary_sheet["B10"].value).strip() if summary_sheet["B10"].value else ""
+
+        if report_type_value == EXPECTED_REPORT_TYPE:
+            print("✅ Report Type matches expected value.")
+        else:
+            print(f"❌ Report Type mismatch: Found '{report_type_value}', Expected '{EXPECTED_REPORT_TYPE}'")
+
+        if importer_tab_value == EXPECTED_REPORT_TAB:
+            print("✅ Exporter tab value matches expected value.")
+        else:
+            print(f"❌ Exporter tab value  mismatch: Found '{importer_tab_value}', Expected '{EXPECTED_REPORT_TAB}'")
+
+        if download_date_value == EXPECTED_DOWNLOAD_DATE:
+            print("✅ Download Date matches today's date.")
+        else:
+            print(f"❌ Download Date mismatch: Found '{download_date_value}', Expected '{EXPECTED_DOWNLOAD_DATE}'")
+
+        # --- Read "Shipment Data" sheet ---
+        if "Exporter Data" not in wb.sheetnames:
+            wb.close()
+            raise ValueError("❌ 'Exporter Data' sheet not found in downloaded Excel.")
+        sheet = wb["Exporter Data"]
+
+        # Read Excel headers
+        downloaded_headers = [str(cell.value).strip() if cell.value else "" for cell in sheet[1]]
+        wb.close()
+
+        # --- Get UI headers ---
+        ui_headers = self.page.locator("//table/thead/tr/th").all_inner_texts()
+        ui_headers = [h.strip() for h in ui_headers if h not in ("", "View")]
+
+        # --- Normalize headers ---
+        def normalize_header(h):
+            if not h:
+                return ""
+            return str(h).strip().replace(".", "").replace("  ", " ").replace("'", "").replace('"', '').lower()
+
+        excel_norm = [normalize_header(h) for h in downloaded_headers]
+        ui_norm = [normalize_header(h) for h in ui_headers]
+
+        # --- Columns to ignore in Excel ---
+        ignore_cols = [
+            "company name",
+            "shipper jurisdiction country",
+            "sno"
+        ]
+
+        # Filter Excel and UI columns
+        excel_filtered = [col for col in excel_norm if col not in ignore_cols]
+        ui_filtered = [col for col in ui_norm if col not in ignore_cols]
+
+        # --- Validation ---
+        missing_ui_cols = [col for col in ui_filtered if col not in excel_filtered]
+        extra_excel_cols = [col for col in excel_filtered if col not in ui_filtered]
+
+        if not missing_ui_cols:
+            print("✅ All relevant UI columns are present in Excel (ignored extra fields).")
+        else:
+            print("❌ Missing UI columns in Excel:", missing_ui_cols)
+
+        if extra_excel_cols:
+            print("⚠️ Extra columns in Excel (not in UI):", extra_excel_cols)
+
+        # --- Cleanup ---
+        os.remove(file_path)
+
+    def validate_data_after_applying_filter(self):
+        # First row
+        first_row = self.page.locator("table tbody tr").first
+        self.page.pause()
+        # Serial number (for logging)
+        sl_no = first_row.locator("td").nth(1).inner_text().strip()
+        expected_shipments = first_row.locator("td").nth(3).inner_text().strip()
+        print(f"First row Serial No: {sl_no}, Shipments: {expected_shipments}")
+        expected_shipment_value_usd = first_row.locator("td").nth(4).inner_text().strip()
+        print(f"First row Serial No: {sl_no}, Shipment Value USD: {expected_shipment_value_usd}")
+        consignee_locator = first_row.locator("td").nth(2).locator("[data-tip]").first
+        consignee_tip = consignee_locator.get_attribute("data-tip") if consignee_locator.count() > 0 else None
+
+        if consignee_tip and consignee_tip.strip():
+            self.company_name = consignee_tip.strip()
+        else:
+            # Fallback to visible text if no tooltip
+            self.company_name = first_row.locator("td").nth(2).inner_text().strip()
+        country_name = self.page.locator('[role="cell"] > .text-wrap > [class="tw-flex tw-items-center"]').first
+
+        # Locate and click the Apply Filter icon
+        headers = self.page.locator("table thead tr th")
+        header_count = headers.count()
+        rows = self.page.locator("table tbody tr")
+        row_count = rows.count()
+
+        self.A_F = None
+
+        for i in range(header_count):
+            header_text = headers.nth(i).inner_text().strip().lower()
+            if header_text == "apply filter":
+                self.A_F = i
+
+        if self.A_F is None:
+            raise Exception("❌ 'Apply Filter' column not found in table headers")
+        # Click the Apply Filter icon at the end of any company row
+        apply_filter_icon = rows.nth(0).locator("td").nth(self.A_F).locator("img")
+        apply_filter_icon.scroll_into_view_if_needed()
+        apply_filter_icon.click()
+
+        print(f"✅ Applied filter for first row (Serial No: {sl_no})")
+        # Observe the grid display same values
+        sl_no = first_row.locator("td").nth(1).inner_text().strip()
+        consignee_locator_actual = first_row.locator("td").nth(2).locator("[data-tip]").first
+        consignee_tip_actual = consignee_locator_actual.get_attribute(
+            "data-tip") if consignee_locator_actual.count() > 0 else None
+
+        if consignee_tip_actual and consignee_tip_actual.strip():
+            company_name_actual = consignee_tip.strip()
+        else:
+            # Fallback to visible text if no tooltip
+            company_name_actual = first_row.locator("td").nth(2).inner_text().strip()
+
+        if self.company_name == company_name_actual:
+            print(f"valid company found:{company_name_actual} at {sl_no}")
+        else:
+            print(f"❌invalid company found:{company_name_actual} at {sl_no}")
+
+        country_name_actual = self.page.locator(
+            '[role="cell"] > .text-wrap > [class="tw-flex tw-items-center"]').first.inner_text().strip()
+        if country_name.lower() == country_name_actual.lower():
+            print(f"valid country found:{country_name_actual} at {sl_no}")
+        else:
+            print(f"❌invalid country found:{country_name_actual} at {sl_no}")
+
+        # check Shiment
+        actual_shipment_value = first_row.locator("td").nth(3).inner_text().strip()
+        if actual_shipment_value == expected_shipments:
+            print(f"valid shipment count:{actual_shipment_value} at {sl_no}")
+        else:
+            print(f"❌invalid shipment count:{actual_shipment_value} at {sl_no}")
+        self.page.pause()
+        # check shipment value usd
+        actual_shipment_value_usd = first_row.locator("td").nth(4).inner_text().strip()
+        if actual_shipment_value_usd == expected_shipment_value_usd:
+            print(f"valid shipment value usd count:{actual_shipment_value_usd} at {sl_no}")
+        else:
+            print(f"❌invalid shipment value usd count:{actual_shipment_value_usd} at {sl_no}")
+
+        # Verify the filter option at the top
+        expect(self.page.locator('[class="_badgefilterno_a6k5f_121"]')).to_contain_text('1')
+        # Click on the shipper filter dropdown
+        self.page.locator("div").filter(has_text=re.compile(r"^Shipper1$")).nth(1).click()
+        # Scroll to the top filter bar and locate the Consignee Standardized Name filter
+        expect(self.page.locator('[class="_badgefilterno_a6k5f_121"]').nth(1)).to_contain_text('1')
+        # Click on the Shipper  Standardized Name filter
+        self.page.get_by_text("Shipper Standardized Name", exact=True).click()
+        expect(self.page.locator("#searchIndividualFilterPanel")).to_contain_text(
+            "Filter by Shipper Standardized Name")
+        self.page.locator("//input[@type='text' and contains(@placeholder, 'Search in')]").last.fill(self.company_name)
+        self.page.wait_for_timeout(5000)
+        # Check for the presence of the company name in the results
+        locators = self.page.locator('[class="text-no-transform"]')
+        count = locators.count()
+        print(f"🔍 Found {count} elements with class 'text-no-transform'")
+
+        if count == 0:
+            print("❌ FAIL: No elements found for search")
+            self.page.locator('input[type="text"]').last.clear()
+        else:
+            found_match = False
+
+            for i in range(count):
+                locator = locators.nth(i)
+
+                if locator.is_visible():
+                    actual_text = locator.inner_text().strip()
+
+                    if self.company_name.lower() in actual_text.lower():  # case-insensitive compare
+                        print(
+                            f"✅ PASS: Search is working → '{self.company_name}' found in element {i + 1}: '{actual_text}'")
+                        expect(locator).to_contain_text(re.compile(self.company_name, re.IGNORECASE))
+                        # Open the Consignee filter Standardized Name section
+                        expect(self.page.locator("//label[input[@type='checkbox']]").first).to_be_checked()
+                        print(f"{self.company_name} for the selected company in consignee standardized name filter")
+                        # Verify the shipment count
+                        shipment_count_value = self.page.locator('.grey-text').nth(0).inner_text().strip()
+                        clean_shipmentvalue = shipment_count_value.strip("()")
+                        print(clean_shipmentvalue)
+                        if expected_shipments == clean_shipmentvalue:
+                            print(
+                                f"valid shipment count:{clean_shipmentvalue} for the selected company in consignee standardized name filter")
+                        else:
+                            print(
+                                f"❌invalid shipment count:{clean_shipmentvalue} for the selected company in consignee standardized name filter")
+                        found_match = True
+                    else:
+                        print(
+                            f"❌ FAIL: Search text '{self.company_name}' not found in element {i + 1}. Actual: '{actual_text}'")
+                else:
+                    print(f"⚠️ Element {i + 1} is not visible")
+
+            if not found_match:
+                print(f"❌ FAIL: Search text '{self.company_name}' not found in any visible element")
+                self.page.locator('input[type="text"]').clear()
+
+        self.page.locator("//span[@aria-hidden='true']").click()
+        self.page.pause()
+        self.page.locator("div").filter(has_text=re.compile(r"^Shipper1$")).nth(1).click()
+        # Observe the updated values in the following tabs: Shipments, Importers, Exporters
+        self.Shipment_count = self.page.locator("//a[@id='nav-home-tab']//span[contains(@class, 'tw-text-xs')]").nth(
+            0).inner_text().strip()
+        print(f"shipment count:{self.Shipment_count}")
+        self.Importer_count = self.page.locator("//a[@id='nav-profile-tab']//span[contains(@class, 'tw-text-xs')]").nth(
+            0).inner_text().strip()
+        print(f"Importer count:{self.Importer_count}")
+        self.Exporter_count = self.page.locator("//a[@id='nav-contact-tab']//span[contains(@class, 'tw-text-xs')]").nth(
+            0).inner_text().strip()
+        print(f"Exporter count:{self.Exporter_count}")
+
+    def Validate_Tab_count_after_Manual_search(self):
+        # In the Consignee Standardized Name filter, manually filter and apply the same company name, then observe the Shipment/Importer/Exporter counts again
+        self.page.wait_for_timeout(3000)
+        # In the search bar, manually enter a Shipper Name and click Search
+        expect(self.page.get_by_placeholder(
+            "Type to search in all categories or choose from the category below")).to_be_visible()
+        # Manual suggest search for Shipper
+        self.page.get_by_role("textbox", name="Type to search in all").click()
+        self.page.get_by_role("textbox", name="Type to search in all").fill(self.company_name)
+        self.page.locator(".tw-bg-primary-purple-500").click()
+        self.page.wait_for_timeout(5000)
+        # Verify the count
+        Check_Shipment_count = self.page.locator("//a[@id='nav-home-tab']//span[contains(@class, 'tw-text-xs')]").nth(
+            0).inner_text().strip()
+        if self.Shipment_count == Check_Shipment_count:
+            print("✅ Shipment count is matching")
+        else:
+            print(f"❌ Shows wrong shipment count{Check_Shipment_count}")
+
+        Check_Importer_count = self.page.locator("//a[@id='nav-profile-tab']//span[contains(@class, 'tw-text-xs')]").nth(
+            0).inner_text().strip()
+        if self.Importer_count == Check_Importer_count:
+            print(f"✅ Importer count is matching")
+        else:
+            print(f"❌ Shows wrong Importer count{Check_Importer_count}")
+        Check_Exporter_count = self.page.locator("//a[@id='nav-contact-tab']//span[contains(@class, 'tw-text-xs')]").nth(
+            0).inner_text().strip()
+        if self.Exporter_count == Check_Exporter_count:
+            print("✅ Exporter count is matching")
+        else:
+            print(f"❌ Shows wrong Exporter count{Check_Exporter_count}")
+
+
+
 
 
 

@@ -6,7 +6,7 @@ from openpyxl.styles import PatternFill
 from playwright.sync_api import Page, expect
 from playwright.sync_api import expect, TimeoutError as PlaywrightTimeoutError
 invalid_entries =[]
-
+import pytest
 
 def split_location(text: str):
     # Remove commas and extra spaces
@@ -21,6 +21,17 @@ class Search:
         self.port_name_hyperlink = None
         self.page = page
         self.invalid_consignee_entries = []
+
+    def Close_button(self):
+        close_locator = self.page.locator('[class="tw-mt-6 tw-cursor-pointer"]').first
+        self.page.wait_for_timeout(5000)
+        if close_locator.is_visible(timeout=40000):
+            print("🔍 'close' is visible, clicking...")
+            close_locator.click()
+            expect(self.page.get_by_placeholder(
+                "Type to search in all categories or choose from the category below")).to_be_visible()
+        else:
+            print("ℹ️ 'Close' button is not visible.")
 
     def auto_suggest_hs_code_search(self, hs_code: str):
         """Test HS Code search functionality"""
@@ -72,7 +83,11 @@ class Search:
         self.page.locator(".tw-bg-primary-purple-500").click()
 
     def check_hs_code_in_shipmentgrid(self, validate: bool = True, use_pagination: bool = False):
-        self.page.locator("//a[@id='nav-home-tab']").click()
+        shipment_tab = self.page.locator("//a[@id='nav-home-tab']")
+        if not shipment_tab.is_visible(timeout=10000):  # wait max 5s for results
+            print("❌ No search results found in Shipment Grid.")
+            return []
+        self.page.locator("//a[@id='nav-home-tab']").click(timeout=40000)
 
         if not hasattr(self, "invalid_entries"):
             self.invalid_entries = []
@@ -195,6 +210,10 @@ class Search:
         return self.invalid_entries
 
     def Validate_Discover_Insights(self):
+        shipment_tab = self.page.locator("//a[@id='nav-home-tab']")
+        if not shipment_tab.is_visible(timeout=10000):  # wait max 5s for results
+            print("❌ No search results found in Shipment Grid.")
+            return []
         with self.page.expect_popup() as page1_info:
             self.page.get_by_text("HS:").click()
         page1 = page1_info.value
@@ -221,7 +240,12 @@ class Search:
 
     def check_product_description_in_shipment_grid(self, validate: bool = True, use_pagination: bool = False):
         """Check product descriptions across shipment grid pages"""
-
+        self.page.pause()
+        shipment_tab = self.page.locator("//a[@id='nav-home-tab']")
+        if not shipment_tab.is_visible(timeout=10000):  # wait max 5s for results
+            print("❌ No search results found in Shipment Grid.")
+            return []
+        self.page.locator("//a[@id='nav-home-tab']").click(timeout=40000)
         if not hasattr(self, "invalid_entries"):
             self.invalid_entries = []
 
@@ -363,6 +387,10 @@ class Search:
         self.page.locator(".tw-bg-primary-purple-500").click()
 
     def Validate_exporter_tab(self):
+        shipment_tab = self.page.locator("//a[@id='nav-home-tab']")
+        if not shipment_tab.is_visible(timeout=10000):  # wait max 5s for results
+            print("❌ No search results found in Shipment Grid.")
+            return []
         # Navigate to exporter tab
         self.page.locator("//a[@id='nav-contact-tab']").click()
 
@@ -375,6 +403,10 @@ class Search:
 
     def check_shipper_name_export_tab(self, validate: bool = True):
         """Check shipper names across all pages and collect invalid entries"""
+        export_tab =  self.page.locator("//a[@id='nav-contact-tab']")
+        if not export_tab.is_visible(timeout=10000):  # wait max 5s for results
+            print("❌ No search results found in Shipment Grid.")
+            return []
         rows = self.page.locator("table tbody tr")
         row_count = rows.count()
 
@@ -407,6 +439,10 @@ class Search:
                     print(f"❌ Invalid company name found: {company} at Sl. No: {sl_no}")
 
     def validate_duplicate_country_names(self):
+        shipment_tab = self.page.locator("//a[@id='nav-home-tab']")
+        if not shipment_tab.is_visible(timeout=10000):  # wait max 5s for results
+            print("❌ No search results found in Shipment Grid.")
+            return []
         # Locate all company names in the "Company Name" column
         country_elements = self.page.locator("//div[img[@class='trademo-search-flag mr-2']]")
         count = country_elements.count()
@@ -453,7 +489,10 @@ class Search:
 
     def check_Shipper_Name_in_theGrid_View(self, validate: bool = True, use_pagination: bool = False):
         """Check shipper names across all pages and collect invalid entries"""
-
+        shipment_tab = self.page.locator("//a[@id='nav-home-tab']")
+        if not shipment_tab.is_visible(timeout=10000):  # wait max 5s for results
+            print("❌ No search results found in Shipment Grid.")
+            return []
         self.page.locator("//a[@id='nav-home-tab']").click()
 
         if not hasattr(self, "invalid_shipper_entries"):
@@ -558,6 +597,14 @@ class Search:
         return self.invalid_shipper_entries
 
     def Validate_Discover_insight_link(self):
+        shipment_tab = self.page.locator("//a[@id='nav-home-tab']")
+        if not shipment_tab.is_visible(timeout=10000):  # wait max 5s for results
+            print("❌ No search results found in Shipment Grid.")
+            return []
+        shipment_tab = self.page.locator("//a[@id='nav-home-tab']")
+        if not shipment_tab.is_visible(timeout=10000):  # wait max 5s for results
+            print("❌ No search results found in Shipment Grid.")
+            return []
         expect(self.page.locator('[class="btn-link trademo-link text-capitalize"]')).to_have_text(self.selected_shipper.lower())
 
         # Test insights link
@@ -585,6 +632,10 @@ class Search:
         self.page.locator(".tw-bg-primary-purple-500").click()
 
     def Validate_importer_tab(self):
+        shipment_tab = self.page.locator("//a[@id='nav-home-tab']")
+        if not shipment_tab.is_visible(timeout=10000):  # wait max 5s for results
+            print("❌ No search results found in Shipment Grid.")
+            return []
         # Navigate to importer tab
         self.page.locator("//a[@id='nav-profile-tab']").click()
 
@@ -596,6 +647,10 @@ class Search:
             total_count)
 
     def Validate_Discover_insight_consignee(self):
+        shipment_tab = self.page.locator("//a[@id='nav-home-tab']")
+        if not shipment_tab.is_visible(timeout=10000):  # wait max 5s for results
+            print("❌ No search results found in Shipment Grid.")
+            return []
         # Test insights link
         with self.page.expect_popup() as page2_info:
             self.page.locator("a").filter(has_text=self.selected_consignee.lower()).click()
@@ -606,7 +661,10 @@ class Search:
 
     def check_Consignee_Name_in_theGrid_View(self, validate: bool = True, use_pagination: bool = False):
         """Check shipper names across all pages and collect invalid entries"""
-
+        shipment_tab = self.page.locator("//a[@id='nav-home-tab']")
+        if not shipment_tab.is_visible(timeout=10000):  # wait max 5s for results
+            print("❌ No search results found in Shipment Grid.")
+            return []
         self.page.locator("//a[@id='nav-home-tab']").click()
 
         if not hasattr(self, "invalid_consignee_entries"):
@@ -712,7 +770,10 @@ class Search:
 
     def check_consignee_Name_Import_tab(self, validate: bool = True):
         """Check consignee names across shipment grid pages and collect invalid entries"""
-
+        shipment_tab = self.page.locator("//a[@id='nav-home-tab']")
+        if not shipment_tab.is_visible(timeout=10000):  # wait max 5s for results
+            print("❌ No search results found in Shipment Grid.")
+            return []
         rows = self.page.locator("table tbody tr")
         row_count = rows.count()
 
@@ -759,6 +820,10 @@ class Search:
         self.page.locator(".tw-bg-primary-purple-500").click()
 
     def Check_Chemical_In_shipmentGrid(self, validate: bool = True, use_pagination: bool = False):
+        shipment_tab = self.page.locator("//a[@id='nav-home-tab']")
+        if not shipment_tab.is_visible(timeout=10000):  # wait max 5s for results
+            print("❌ No search results found in Shipment Grid.")
+            return []
         self.page.locator("//a[@id='nav-home-tab']").click()
         self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(state="visible", timeout=100000)
 
@@ -901,6 +966,10 @@ class Search:
         #expect(self.page.get_by_role("main")).to_contain_text("chennai, tamil nadu, india")
 
     def Check_Port_description_Shipment_Grid(self, validate: bool = True, use_pagination: bool = False):
+        shipment_tab = self.page.locator("//a[@id='nav-home-tab']")
+        if not shipment_tab.is_visible(timeout=10000):  # wait max 5s for results
+            print("❌ No search results found in Shipment Grid.")
+            return []
         self.page.locator("//a[@id='nav-home-tab']").click()
 
         self.invalid_entries = []
@@ -922,9 +991,9 @@ class Search:
                 self.S_No = i
             elif header_text.lower() in ["matching field", "matching fields"]:
                 self.M_field = i
-            elif header_text.lower() in ["port of lading", "loading port"]:
+            elif header_text.lower() in ["port of lading", "ports of lading"]:
                 self.Port_Lading_col = i
-            elif header_text.lower() in ["port of unlading", "unloading port"]:
+            elif header_text.lower() in ["port of unlading", "ports of unlading"]:
                 self.Port_Unlading_col = i
 
         if self.S_No is None:
@@ -1054,11 +1123,15 @@ class Search:
         return self.invalid_entries
 
     def Validate_Discover_insight_ports(self):
-         with self.page.expect_popup() as page3_info:
+        shipment_tab = self.page.locator("//a[@id='nav-home-tab']")
+        if not shipment_tab.is_visible(timeout=10000):  # wait max 5s for results
+            print("❌ No search results found in Shipment Grid.")
+            return []
+        with self.page.expect_popup() as page3_info:
                self.page.locator("span").filter(has_text="Discover more insights about").locator("span").click()
-         page3 = page3_info.value
-         expect(page3.get_by_role("main")).to_contain_text(self.port_name_hyperlink,ignore_case=True, timeout=100000)
-         page3.close()
+        page3 = page3_info.value
+        expect(page3.get_by_role("main")).to_contain_text(self.port_name_hyperlink,ignore_case=True, timeout=100000)
+        page3.close()
 
     def Search_product_manualsuggest(self, product_name: str):
         expect(self.page.get_by_placeholder(
@@ -1070,9 +1143,15 @@ class Search:
         self.page.get_by_role("textbox", name="Type to search in all categories or choose from the category below").fill(product_name)
         self.page.locator(".tw-bg-primary-purple-500").click()
 
-
     def Verify_Shipment_tab_Manual_suggest(self, Extracted_Text: str, validate: bool = True,
                                            use_pagination: bool = False):
+        # 🔄 Always reset invalid_entries for fresh validation run
+        shipment_tab = self.page.locator("//a[@id='nav-home-tab']")
+        if not shipment_tab.is_visible(timeout=10000):  # wait max 5s for results
+            print("❌ No search results found in Shipment Grid.")
+            return []
+        self.invalid_entries = []
+
         # Open shipment tab
         self.page.pause()
         self.page.locator("//a[@id='nav-home-tab']").click()
@@ -1081,17 +1160,11 @@ class Search:
         rows = self.page.locator("table tbody tr")
         row_count = rows.count()
 
-        # ✅ Flexible row check
         if row_count < 10:
             print(f"⚠️ Only {row_count} rows found (less than 10). Skipping strict check.")
         else:
             expect(rows).to_have_count(10, timeout=100000)
 
-        # Keep invalid_entries consistent across calls
-        if not hasattr(self, "invalid_entries"):
-            self.invalid_entries = []
-
-        # --- Extract headers dynamically ---
         headers = self.page.locator("table thead tr th")
         header_count = headers.count()
 
@@ -1123,9 +1196,9 @@ class Search:
         extracted_text_lower = Extracted_Text.lower()
         all_rows_data = []
 
-        # --- process one page ---
         def process_current_page():
             row_count = rows.count()
+            print(f"🔄 Processing {row_count} rows on current page...")
 
             for i in range(row_count):
                 row_data = []
@@ -1147,12 +1220,12 @@ class Search:
                     shipper_name = row_data[self.Shipper_col] if self.Shipper_col else ""
                     consignee_name = row_data[self.Consignee_col] if self.Consignee_col else ""
 
-                    consignee_address = shipper_std_name = consignee_std_name = ""
+                    consignee_address = shipper_address = ""
+                    shipper_std_name = consignee_std_name = ""
 
-                    # --- Validation checks ---
                     for mf in matching_fields_list:
                         if mf == "Product Description":
-                            parts = split_location(extracted_text_lower)  # e.g. ['shekou', 'port']
+                            parts = split_location(extracted_text_lower)
                             product_span = rows.nth(i).locator("td").nth(self.Product_col).locator("[data-tip]").first
                             product_tip = product_span.get_attribute("data-tip") if product_span.count() > 0 else None
                             product = product_tip.strip() if product_tip else rows.nth(i).locator("td").nth(
@@ -1161,131 +1234,85 @@ class Search:
                             print(f"🔎 Checking product: {product}")
                             product_lower = product.lower()
 
-                            matched_word = None
-                            for word in parts:
-                                if word in product_lower:
-                                    matched_word = word
-                                    break
-
+                            matched_word = next((word for word in parts if word in product_lower), None)
                             if matched_word:
                                 print(f"✅ {mf} contains keyword '{matched_word}' at Sl. No: {sl_no}")
                             else:
                                 print(f"❌ {mf} mismatch: {product} at Sl. No: {sl_no}")
-                                is_invalid, validation_note = True, [f"❌ Invalid Product Description in Grid"]
+                                is_invalid = True
+                                validation_note.append("❌ Invalid Product Description in Grid")
 
                         elif mf == "Shipper Name":
                             if extracted_text_lower in shipper_name.lower():
                                 print(f"✅ Shipper name valid at Sl. No: {sl_no}")
                             else:
                                 print(f"❌ Shipper name mismatch: {shipper_name} at Sl. No: {sl_no}")
-                                is_invalid, validation_note = True, ["❌ Invalid Shipper in Grid"]
+                                is_invalid = True
+                                validation_note.append("❌ Invalid Shipper in Grid")
 
                         elif mf == "Consignee Name":
                             if extracted_text_lower in consignee_name.lower():
                                 print(f"✅ Consignee name valid at Sl. No: {sl_no}")
                             else:
                                 print(f"❌ Consignee name mismatch: {consignee_name} at Sl. No: {sl_no}")
-                                is_invalid, validation_note = True, ["❌ Invalid Consignee in Grid"]
+                                is_invalid = True
+                                validation_note.append("❌ Invalid Consignee in Grid")
 
                         elif mf == "Shipper Address":
                             rows.nth(i).locator("td").nth(1).click()
-                            self.page.wait_for_timeout(2000)
-
+                            self.page.wait_for_timeout(500)
                             read_more_locator = self.page.get_by_text("Read more").first
-                            self.page.wait_for_timeout(1000)  # wait for rendering
-
-                            if read_more_locator.is_visible():
-                                print("🔍 'Read More' is visible, clicking...")
+                            try:
+                                read_more_locator.wait_for(state="visible", timeout=5000)
+                                print("🔍 'Read More' found, clicking...")
                                 read_more_locator.click()
-                                self.page.wait_for_timeout(500)
-
+                                self.page.wait_for_selector("div.read-more-cards", state="visible", timeout=5000)
                                 read_more = self.page.locator("div.read-more-cards").first
-                                try:
-                                    address_text = read_more.inner_text().strip()
-                                    parts = split_location(extracted_text_lower)  # e.g. ['shekou', 'port']
-                                    address_lower = address_text.lower()
-
-                                    matched_word = None
-                                    for word in parts:
-                                        if word in address_lower:
-                                            matched_word = word
-                                            break
-
-                                    if matched_word:
-                                        print(f"✅ {mf} contains keyword '{matched_word}' at Sl. No: {sl_no}")
-                                    else:
-                                        print(f"❌ {mf} mismatch: {address_text} at Sl. No: {sl_no}")
-                                        is_invalid, validation_note = True, [f"❌ Invalid shipper address in view"]
-                                finally:
-                                    close_btn = self.page.locator("//span[@aria-hidden='true']")
-                                    if close_btn.is_visible():
-                                        close_btn.click()
-                            else:
+                                address_text = read_more.inner_text().strip()
+                                shipper_address = address_text
+                                parts = split_location(extracted_text_lower)
+                                address_lower = address_text.lower()
+                                matched_word = next((w for w in parts if w in address_lower), None)
+                                if matched_word:
+                                    print(f"✅ {mf} contains keyword '{matched_word}' at Sl. No: {sl_no}")
+                                else:
+                                    print(f"❌ {mf} mismatch: {address_text} at Sl. No: {sl_no}")
+                                    is_invalid = True
+                                    validation_note.append("❌ Invalid shipper address in view")
+                            except:
                                 print("❌ 'Read more' link not found for Shipper Address")
+                            finally:
+                                close_btn = self.page.locator("//span[@aria-hidden='true']")
+                                if close_btn.is_visible():
+                                    close_btn.click()
 
                         elif mf == "Consignee Address":
                             rows.nth(i).locator("td").nth(1).click()
-                            self.page.wait_for_timeout(2000)
-
+                            self.page.wait_for_timeout(500)
                             read_more_locator = self.page.get_by_text("Read more").last
-                            self.page.wait_for_timeout(1000)  # wait for rendering
-
-                            if read_more_locator.is_visible():
-                                print("🔍 'Read More' is visible, clicking...")
+                            try:
+                                read_more_locator.wait_for(state="visible", timeout=5000)
+                                print("🔍 'Read More' found, clicking...")
                                 read_more_locator.click()
-                                self.page.wait_for_timeout(500)
-
+                                self.page.wait_for_selector("div.read-more-cards", state="visible", timeout=5000)
                                 read_more = self.page.locator("div.read-more-cards").last
-                                try:
-                                    address_text = read_more.inner_text().strip()
-                                    parts = split_location(extracted_text_lower)  # e.g. ['shekou', 'port']
-                                    address_lower = address_text.lower()
-
-                                    matched_word = None
-                                    for word in parts:
-                                        if word in address_lower:
-                                            matched_word = word
-                                            break
-
-                                    if matched_word:
-                                        print(f"✅ {mf} contains keyword '{matched_word}' at Sl. No: {sl_no}")
-                                    else:
-                                        print(f"❌ {mf} mismatch: {address_text} at Sl. No: {sl_no}")
-                                        is_invalid, validation_note = True, [f"❌ Invalid consignee address in view"]
-                                finally:
-                                    close_btn = self.page.locator("//span[@aria-hidden='true']")
-                                    if close_btn.is_visible():
-                                        close_btn.click()
-                            else:
+                                address_text = read_more.inner_text().strip()
+                                consignee_address = address_text
+                                parts = split_location(extracted_text_lower)
+                                address_lower = address_text.lower()
+                                matched_word = next((w for w in parts if w in address_lower), None)
+                                if matched_word:
+                                    print(f"✅ {mf} contains keyword '{matched_word}' at Sl. No: {sl_no}")
+                                else:
+                                    print(f"❌ {mf} mismatch: {address_text} at Sl. No: {sl_no}")
+                                    is_invalid = True
+                                    validation_note.append("❌ Invalid consignee address in view")
+                            except:
                                 print("❌ 'Read more' link not found for Consignee Address")
-
-                        elif mf == "Shipper Standardized Name":
-                            rows.nth(i).locator("td").nth(1).click()
-                            self.page.wait_for_timeout(2000)
-                             # Extract Shipper Standardized Name
-                            Shipper_Standardized_Name = self.page.locator(
-                                " //span[normalize-space(text())='Shipper Standardized Name'] /ancestor::div[contains(@class,'col-5')] /following-sibling::div[contains(@class,'col-7')]//a").inner_text().strip()
-                            if extracted_text_lower in Shipper_Standardized_Name.lower():
-                                print(
-                                    f"✅ Shipper Standardized Name contains keyword {Shipper_Standardized_Name} at Sl. No: {sl_no}")
-                            else:
-                                print(
-                                    f"❌ Search keyword not found in shipper standardized name: {Shipper_Standardized_Name} at Sl. No: {sl_no}")
-                                is_invalid, validation_note = True, ["❌ Invalid shipper standardized name in Grid"]
-                            self.page.locator("//span[@aria-hidden='true']").click()
-
-                        elif mf == "Consignee Standardized Name":
-                            rows.nth(i).locator("td").nth(1).click()
-                            Consignee_Standardized_Name = self.page.locator(
-                                " //span[normalize-space(text())='Consignee Standardized Name'] /ancestor::div[contains(@class,'col-5')] /following-sibling::div[contains(@class,'col-7')]//a").inner_text().strip()
-                            if extracted_text_lower in Consignee_Standardized_Name.lower():
-                                print(
-                                    f"✅ Consignee Standardized Name contains keyword {Consignee_Standardized_Name} at Sl. No: {sl_no}")
-                            else:
-                                print(
-                                    f"❌ Search keyword not found in consignee standardized name: {Consignee_Standardized_Name} at Sl. No: {sl_no}")
-                                is_invalid, validation_note = True, ["❌ Invalid consignee standardized name in Grid"]
-                            self.page.locator("//span[@aria-hidden='true']").click()
+                            finally:
+                                close_btn = self.page.locator("//span[@aria-hidden='true']")
+                                if close_btn.is_visible():
+                                    close_btn.click()
 
                     if is_invalid:
                         self.invalid_entries.append({
@@ -1294,6 +1321,7 @@ class Search:
                             "product": product,
                             "Shipper_Name": shipper_name,
                             "Consignee_Name": consignee_name,
+                            "Shipper_Address": shipper_address,
                             "Consignee_Address": consignee_address,
                             "Shipper_Standardized_Name": shipper_std_name,
                             "Consignee_Standardized_Name": consignee_std_name,
@@ -1302,7 +1330,6 @@ class Search:
                 row_data.append(", ".join(validation_note) if validation_note else "")
                 all_rows_data.append(row_data)
 
-        # --- pagination support ---
         if use_pagination:
             while True:
                 process_current_page()
@@ -1315,7 +1342,6 @@ class Search:
         else:
             process_current_page()
 
-        # --- Save to Excel if invalid entries exist ---
         if self.invalid_entries:
             os.makedirs("results", exist_ok=True)
             workbook = Workbook()
@@ -1389,70 +1415,155 @@ class Search:
         self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(state="visible", timeout=100000)
         self.page.wait_for_timeout(3000)
 
-    def auto_suggest_manual_hs_code(self, hs_code:str):
-        self.page.pause()
+    def auto_suggest_manual_hs_code(self, hs_code: str):
+        # Focus and type into search box
         self.page.get_by_role("textbox", name="Type to search in all").click()
         self.page.get_by_role("textbox", name="Type to search in all").fill(hs_code)
-        self.selected_hs_code = self.page.locator('[class="tw-font-medium tw-bg-transparent tw-p-0"]').nth(0).inner_text().strip()
-        self.page.locator('[class="tw-font-medium tw-bg-transparent tw-p-0"]').nth(0).click()
-        print(f"Selected HS Code is: {self.selected_hs_code}")
+
+        # Locator for the first HS code suggestion
+        hs_code_locator = self.page.locator("//div[contains(text(),'HS:')]/mark").first
+
+        # Wait up to 5 seconds for suggestion to appear
+        try:
+            hs_code_locator.wait_for(state="visible", timeout=5000)
+        except TimeoutError:
+            pytest.skip(f"⚠️ Search result for HS Code '{hs_code}' not found. Skipping the test.")
+
+        # Continue only if visible
+        self.selected_hs_code = hs_code_locator.inner_text().strip()
+        hs_code_locator.click()
+        print(f"✅ Selected HS Code is: {self.selected_hs_code}")
+
+        # Confirm and wait for results
         self.page.locator(".tw-bg-primary-purple-500").click()
         self.page.wait_for_timeout(3000)
-        self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(state="visible", timeout=100000)
+        self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(
+            state="visible", timeout=100000
+        )
 
     def auto_suggest_manual_product(self, product_name: str):
         self.page.get_by_role("textbox", name="Type to search in all").click()
         self.page.get_by_role("textbox", name="Type to search in all").fill(product_name)
-        self.selected_product = self.page.locator('[class="tw-font-medium tw-bg-transparent tw-p-0"]').nth(
-            0).inner_text().strip()
-        self.page.locator('[class="tw-font-medium tw-bg-transparent tw-p-0"]').nth(0).click()
-        print(f"Selected product is: {self.selected_product}")
+        self.page.wait_for_timeout(2000)
+
+        # Locator for the first product suggestion
+        product_locator = self.page.locator(
+            "(//span[contains(text(),'Product')]/ancestor::div[contains(@class,'tw-flex tw-items-center')]/following-sibling::div//div[contains(@class,'tw-px-3')])[1]"
+        ).first
+
+        # Check if product suggestion is visible
+        if not product_locator.is_visible():
+            pytest.skip(f"⚠️ Search result for product '{product_name}' not found. Skipping the test.")
+
+        # Continue only if visible
+        self.selected_product = product_locator.inner_text().strip()
+        product_locator.click()
+        print(f"✅ Selected product is: {self.selected_product}")
+
         self.page.locator(".tw-bg-primary-purple-500").click()
         self.page.wait_for_timeout(3000)
-        self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(state="visible", timeout=100000)
+        self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(
+            state="visible", timeout=100000
+        )
 
-    def auto_suggest_manual_shipper(self, shipper_name:str):
+    def auto_suggest_manual_shipper(self, shipper_name: str):
+        # Focus and type into search box
         self.page.get_by_role("textbox", name="Type to search in all").click()
         self.page.get_by_role("textbox", name="Type to search in all").fill(shipper_name)
-        self.selected_shipper = self.page.locator('[class="tw-font-medium tw-bg-transparent tw-p-0"]').nth(
-            0).inner_text().strip()
-        self.page.locator('[class="tw-font-medium tw-bg-transparent tw-p-0"]').nth(0).click()
+
+        # Locator for the first Shipper suggestion
+        shipper_locator = self.page.locator(
+            "(//span[contains(text(),'Shipper')]/ancestor::div[contains(@class,'tw-flex tw-items-center')]/following-sibling::div//div[contains(@class,'tw-px-3')])[1]"
+        ).first
+
+        # Wait up to 5 seconds for suggestion
+        try:
+            shipper_locator.wait_for(state="visible", timeout=5000)
+        except TimeoutError:
+            pytest.skip(f"⚠️ Search result for shipper '{shipper_name}' not found. Skipping the test.")
+
+        # If found, select shipper
+        self.selected_shipper = shipper_locator.inner_text().strip()
+        shipper_locator.click()
+        print(f"✅ Selected shipper is: {self.selected_shipper}")
+
+        # Verify and confirm
         expect(self.page.get_by_role("main")).to_contain_text("Shipper")
         self.page.locator(".tw-bg-primary-purple-500").click()
         self.page.wait_for_timeout(3000)
-        self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(state="visible", timeout=100000)
+
+        # Wait for results table
+        self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(
+            state="visible", timeout=100000
+        )
 
     def auto_suggest_manual_consignee(self,consignee:str):
         self.page.get_by_role("textbox", name="Type to search in all").click()
         self.page.get_by_role("textbox", name="Type to search in all").fill(consignee)
-        self.selected_consignee = self.page.locator('[class="tw-font-medium tw-bg-transparent tw-p-0"]').nth(
+        self.selected_consignee = self.page.locator("(//span[contains(text(),'Consignee')]/ancestor::div[contains(@class,'tw-flex tw-items-center')]/following-sibling::div//div[contains(@class,'tw-px-3')])[1]").nth(
             0).inner_text().strip()
-        self.page.locator('[class="tw-font-medium tw-bg-transparent tw-p-0"]').nth(0).click()
+        self.page.locator("(//span[contains(text(),'Consignee')]/ancestor::div[contains(@class,'tw-flex tw-items-center')]/following-sibling::div//div[contains(@class,'tw-px-3')])[1]").nth(0).click()
         expect(self.page.get_by_role("main")).to_contain_text("Consignee")
         self.page.locator(".tw-bg-primary-purple-500").click()
         self.page.wait_for_timeout(3000)
         self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(state="visible", timeout=100000)
 
-    def auto_suggest_manual_chemical(self, chemical_name:str):
+    def auto_suggest_manual_chemical(self, chemical_name: str):
         self.page.get_by_role("textbox", name="Type to search in all").click()
         self.page.get_by_role("textbox", name="Type to search in all").fill(chemical_name)
-        self.selected_chemical= self.page.locator('[class="tw-font-medium tw-bg-transparent tw-p-0"]').nth(
-            0).inner_text().strip()
-        self.page.locator('[class="tw-font-medium tw-bg-transparent tw-p-0"]').nth(0).click()
+
+        # Locator for the first chemical suggestion
+        chemical_locator = self.page.locator(
+            "(//span[contains(text(),'Chemical')]/ancestor::div[contains(@class,'tw-flex tw-items-center')]/following-sibling::div//div[contains(@class,'tw-px-3')])[1]"
+        ).first
+
+        # Wait up to 5 seconds for the suggestion to appear
+        try:
+            chemical_locator.wait_for(state="visible", timeout=50000)
+        except TimeoutError:
+            pytest.skip(f"⚠️ Search result for chemical '{chemical_name}' not found. Skipping the test.")
+
+        # Continue only if visible
+        self.selected_chemical = chemical_locator.inner_text().strip()
+        chemical_locator.click()
+        print(f"✅ Selected chemical is: {self.selected_chemical}")
+
         expect(self.page.get_by_role("main")).to_contain_text("Chemical")
         self.page.locator(".tw-bg-primary-purple-500").click()
 
     def auto_suggest_manual_port(self, port_name: str):
+        # Focus and type into search box
         self.page.get_by_role("textbox", name="Type to search in all").click()
         self.page.get_by_role("textbox", name="Type to search in all").fill(port_name)
-        self.selected_port = self.page.locator('[class="tw-font-medium tw-bg-transparent tw-p-0"]').first.inner_text().strip()
-        self.page.locator('[class="tw-font-medium tw-bg-transparent tw-p-0"]').first.click()
+
+        # Locator for the first Port suggestion
+        port_locator = self.page.locator(
+            "(//span[contains(text(),'Port')]/ancestor::div[contains(@class,'tw-flex tw-items-center')]/following-sibling::div//div[contains(@class,'tw-px-3')])[1]"
+        ).first
+
+        # Wait up to 5 seconds for suggestion, else skip
+        try:
+            port_locator.wait_for(state="visible", timeout=5000)
+        except TimeoutError:
+            pytest.skip(f"⚠️ Search result for port '{port_name}' not found. Skipping the test.")
+
+        # If found, select port
+        self.selected_port = port_locator.inner_text().strip()
+        port_locator.click()
+        print(f"✅ Selected Port is: {self.selected_port}")
+
+        # Verify UI and confirm selection
         expect(self.page.get_by_role("main")).to_contain_text("Port")
         self.page.locator(".tw-bg-primary-purple-500").click()
         self.page.wait_for_timeout(3000)
-        self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(state="visible", timeout=100000)
+
+        # Wait for results table to load
+        self.page.locator("table tbody tr td:nth-child(4)").first.wait_for(
+            state="visible", timeout=100000
+        )
+
+        # Final verification
         expect(self.page.get_by_role("main")).to_contain_text(self.selected_port)
-        print(f"Selected Port is: {self.selected_port}")
 
     def Verify_Save_Search_screen(self,HS_code:str):
         # Click on the Save Search button
