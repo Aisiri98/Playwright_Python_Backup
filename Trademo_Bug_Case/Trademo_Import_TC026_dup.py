@@ -160,7 +160,6 @@ class TestAutoSelect:
         search_page.auto_suggest_consignee_search(consignee_name)
         search_page.Validate_Discover_insight_consignee()
         search_page.check_consignee_in_shipmentgrid()
-
         print(f"✅ {row_index} Consignee search test completed for: {consignee_name}")
 
     def test_auto_select_options_chemical(self, auto_suggest_data, Check_Country, Reset):
@@ -185,13 +184,7 @@ class TestAutoSelect:
         Check_Country(country, source_type)
         search_page.Close_button()
         search_page.auto_suggest_search_port(port_name)
-        # page = browser_setup
-        # search_obj = Search(page)  # initialize your class with page or whatever constructor
-        #
-        # # Call the method with required arguments
-        # rows = page.locator("//table/tbody/tr")
-        # search_obj.Check_Port_description_Shipment_Grid(rows, "Port of Lading")
-        # search_obj.Check_Port_description_Shipment_Grid(rows, "Port of Unlading")
+        search_page.Check_Port_description_Shipment_Grid()
         search_page.Validate_Discover_insight_ports()
 
         print(f"✅ {row_index} Port search test completed for: {port_name}")
@@ -203,7 +196,7 @@ class TestManual:
 
     def test_manual_search_product(self, manual_suggest_data, Reset,Check_Country):
         (search_page, hs_code, product_name, shipper_name, consignee_name,
-         chemical_name, port_name, row_index, total_count) = manual_suggest_data
+         chemical_name, port_name, row_index, total_count, country, source_type) = manual_suggest_data
 
         print(f"🔍 {row_index} Verify manual search functionality")
 
@@ -217,7 +210,7 @@ class TestManual:
 
     def test_manual_search_hscode(self, manual_suggest_data, Reset, Check_Country):
         (search_page, hs_code, product_name, shipper_name, consignee_name,
-             chemical_name, port_name, row_index, total_count) = manual_suggest_data
+         chemical_name, port_name, row_index, total_count, country, source_type) = manual_suggest_data
 
         # HS Code search
         Reset()
@@ -229,7 +222,7 @@ class TestManual:
 
     def test_manual_search_shipper(self, manual_suggest_data, Reset, Check_Country):
         (search_page, hs_code, product_name, shipper_name, consignee_name,
-             chemical_name, port_name, row_index, total_count) = manual_suggest_data
+         chemical_name, port_name, row_index, total_count, country, source_type) = manual_suggest_data
 
         # Shipper search
         Reset()
@@ -241,7 +234,7 @@ class TestManual:
 
     def test_manual_search_consignee(self, manual_suggest_data, Reset, Check_Country):
         (search_page, hs_code, product_name, shipper_name, consignee_name,
-             chemical_name, port_name, row_index, total_count) = manual_suggest_data
+         chemical_name, port_name, row_index, total_count, country, source_type) = manual_suggest_data
         # Consignee search
         Reset()
         Check_Country(country, source_type)
@@ -252,7 +245,7 @@ class TestManual:
 
     def test_manual_search_chemical(self, manual_suggest_data, Reset, Check_Country):
         (search_page, hs_code, product_name, shipper_name, consignee_name,
-             chemical_name, port_name, row_index, total_count) = manual_suggest_data
+         chemical_name, port_name, row_index, total_count, country, source_type) = manual_suggest_data
         # Chemical search
         Reset()
         Check_Country(country, source_type)
@@ -263,7 +256,7 @@ class TestManual:
 
     def test_manual_search_port(self, manual_suggest_data, Reset, Check_Country):
         (search_page, hs_code, product_name, shipper_name, consignee_name,
-             chemical_name, port_name, row_index, total_count) = manual_suggest_data
+         chemical_name, port_name, row_index, total_count, country, source_type) = manual_suggest_data
         # Port search
         Reset()
         Check_Country(country, source_type)
