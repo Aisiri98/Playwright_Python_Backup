@@ -10,17 +10,12 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 
 def load_CSV_data(file_path='./test_data/login.csv'):
-    """Load email, password, country, and source_type from CSV."""
+    """Load all rows from CSV and return a list of dicts."""
     with open(file_path, mode='r', encoding='utf-8-sig') as file:
         reader = csv.DictReader(file)
-        first_row = next(reader)
-        print("Loaded row:", first_row)
-        return (
-            first_row['email'],
-            first_row['password'],
-            first_row['country'],
-            first_row['source_type']
-        )
+        rows = list(reader)
+        print(f"Loaded {len(rows)} row(s) from CSV")
+        return rows
 
 
 # ---------- BROWSER FIXTURE ----------
@@ -29,13 +24,22 @@ def browser_setup(request):
     playwright = sync_playwright().start()
     browser = playwright.chromium.launch(headless=False)
     context = browser.new_context(
-        record_video_dir="videos/",
+        record_video_dir="Scripts/videos/",
         viewport={"width": 1280, "height": 720}
     )
     page = context.new_page()
 
-    # login steps...
-    email, password, country, source_type= load_CSV_data()
+    # Load CSV and store on request.cls
+    csv_rows = load_CSV_data()
+    first_row = csv_rows[0]  # use first row for login
+    email = first_row["email"]
+    password = first_row["password"]
+
+    # Store rows so other fixtures can use them
+    if hasattr(request, "cls"):  # ✅ ensure we only set if class-based test
+        request.cls.csv_rows = csv_rows
+
+    # ---- Login Steps ----
     page.goto("https://accounts.trademo.com/", wait_until="load")
     page.get_by_placeholder("Enter registered email address").fill(email)
     page.get_by_placeholder("Enter your password").fill(password)
@@ -48,11 +52,14 @@ def browser_setup(request):
         page.get_by_role("button", name="Confirm and Sign In").click()
         expect(page.locator("text=Shipments")).to_be_visible(timeout=100000)
 
-    request.cls.page = page
-    request.cls.context = context
+    # Make page/context available to class
+    if hasattr(request, "cls"):
+        request.cls.page = page
+        request.cls.context = context
 
     yield page
 
+    # ---- Cleanup ----
     video_path = page.video.path() if page.video else None
     page.close()
     context.close()
@@ -68,21 +75,17 @@ def browser_setup(request):
 
 
 # ---------- COUNTRY SELECTION FIXTURE ----------
-@pytest.fixture(scope="class")
-def Check_Country(browser_setup: Page, request):
+@pytest.fixture
+def Check_Country(browser_setup):
     page = browser_setup
-    csv_rows = request.cls.csv_rows  # ✅ Access rows from login fixture
 
-    def _check_country(index=0):
-        row = csv_rows[index]
-        country = row["country"]
-        source_type = row["source_type"]
-
+    def _check_country(country: str, source_type: str):
         page.wait_for_selector(".tw-text-nowrap > span", timeout=10000)
         text_content = page.locator(".tw-text-nowrap > span").text_content()
 
         expected_text = f"{country} {source_type}"
         if expected_text not in text_content:
+            # open filter
             page.locator("[class='tw-flex tw-items-center tw-gap-3 tw-border-none tw-text-sm']").click()
 
             clear_all_btn = page.get_by_role("button", name="Clear All")
@@ -94,15 +97,22 @@ def Check_Country(browser_setup: Page, request):
             for i in range(rows.count()):
                 row_text = rows.nth(i).inner_text().strip()
                 if country in row_text or source_type in row_text:
-                    rows.nth(i).locator('input[type="checkbox"]').first.click()
+                    # ✅ if Exports → click second checkbox, else click first
+                    checkbox = rows.nth(i).locator("input[type='checkbox']")
+                    if source_type.lower() == "exports":
+                        checkbox.nth(1).click()
+                        print("✅ Second checkbox (Exports) clicked.")
+                    else:
+                        checkbox.first.click()
+                        print("✅ First checkbox clicked.")
 
             page.locator("//span[normalize-space()='Apply']").click()
             print(f"✅ {expected_text} is selected in filter")
         else:
             print(f"ℹ️ {expected_text} is already selected in filter. No action needed.")
 
+    # ✅ FIX: return the inner function
     return _check_country
-
 
 @pytest.fixture
 def Reset(browser_setup: Page):
